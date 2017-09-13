@@ -81,15 +81,16 @@ public class TargetsIoClient {
         final long sleepInMillis = 3000;
         String assertions = null;
 
-        try (Response response = client.newCall(request).execute()) {
+        while (retries <= MAX_RETRIES) {
+            try (Response response = client.newCall(request).execute()) {
 
-            while (retries <= MAX_RETRIES) {
+                ResponseBody responseBody = response.body();
                 if (response.code() == 200) {
-                    ResponseBody responseBody = response.body();
                     assertions = responseBody == null ? "null" : responseBody.string();
                     break;
                 } else {
-                    logger.warn("failed to retrieve assertions for url [" + url + "] code [" + response.code() + "] retry [" + retries + "/" + MAX_RETRIES + "] " + response.message());
+                    String message = responseBody == null ? response.message() : responseBody.string();
+                    logger.warn("failed to retrieve assertions for url [" + url + "] code [" + response.code() + "] retry [" + retries + "/" + MAX_RETRIES + "] " + message);
                 }
                 try {
                     Thread.sleep(sleepInMillis);
