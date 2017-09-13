@@ -70,7 +70,7 @@ public class TargetsIoClient {
      */
     public String callCheckAsserts() throws IOException, MojoExecutionException {
         // example: https://targets-io.com/benchmarks/DASHBOARD/NIGHTLY/TEST-RUN-831
-        String url = String.join("/",targetsIoUrl, "benchmarks", dashboardName, testRunId);
+        String url = String.join("/",targetsIoUrl, "benchmarks", productName, dashboardName, testRunId);
         Request request = new Request.Builder()
                 .url(url)
                 .get()
