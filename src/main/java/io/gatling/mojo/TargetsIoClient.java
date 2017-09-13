@@ -83,7 +83,7 @@ public class TargetsIoClient {
 
         try (Response response = client.newCall(request).execute()) {
 
-            while (retries < MAX_RETRIES) {
+            while (retries <= MAX_RETRIES) {
                 if (response.code() == 200) {
                     ResponseBody responseBody = response.body();
                     assertions = responseBody == null ? "null" : responseBody.string();
