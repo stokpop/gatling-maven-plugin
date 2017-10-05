@@ -38,12 +38,12 @@ public class TargetsIoClient {
 
     public void callTargetsIoFor(Action action) {
         String json = targetsIoJson(productName, dashboardName, testRunId, buildResultsUrl, productRelease, rampupTimeSeconds);
-        logger.info(String.join(" ", "Call for", action.getName(), "endpoint:", targetsIoUrl, "with json:", json));
+        logger.debug(String.join(" ", "Call for", action.getName(), "endpoint:", targetsIoUrl, "with json:", json));
         try {
             String result = post(targetsIoUrl + "/running-test/" + action.getName(), json);
-            logger.info("Result: " + result);
+            logger.debug("Result: " + result);
         } catch (IOException e) {
-            logger.error("failed to call keep-alive url: " + e.getMessage());
+            logger.error("Failed to call keep-alive url: " + e.getMessage());
         }
     }
 
@@ -135,6 +135,7 @@ public class TargetsIoClient {
         void info(String message);
         void warn(String message);
         void error(String message);
+        void debug(String message);
     }
 
     public static class SystemOutLogger implements Logger {
@@ -148,6 +149,10 @@ public class TargetsIoClient {
 
         public void error(String message) {
             System.out.println("ERROR: " + message);
+        }
+
+        public void debug(String message) {
+            System.out.println("DEBUG: " + message);
         }
     }
 

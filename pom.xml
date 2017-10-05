@@ -7,17 +7,22 @@
 		<version>9</version>
 	</parent>
 
-	<groupId>io.gatling</groupId>
-	<artifactId>gatling-maven-plugin</artifactId>
+	<groupId>nl.stokpop</groupId>
+	<artifactId>targetsio-maven-plugin</artifactId>
 	<version>3.0.4-ext-SNAPSHOT</version>
-	<name>gatling-maven-plugin</name>
-	<description>gatling-maven-plugin</description>
+	<name>targetsio-maven-plugin</name>
+	<description>Forked from gatling-maven-plugin, with targets-io integration.</description>
 	<packaging>maven-plugin</packaging>
 
-	<inceptionYear>2011</inceptionYear>
-	<url>http://gatling.io</url>
+	<inceptionYear>2017</inceptionYear>
+	<url>http://stokpop.nl</url>
 
 	<developers>
+        <developer>
+            <id>peter.paul.bakker@stokpop.nl</id>
+            <name>Peter Paul Bakker</name>
+            <organization>Stokpop</organization>
+        </developer>
 		<developer>
 			<id>slandelle@gatling.io</id>
 			<name>Stephane Landelle</name>
