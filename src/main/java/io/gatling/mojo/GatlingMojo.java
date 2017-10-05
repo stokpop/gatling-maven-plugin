@@ -262,11 +262,11 @@ public class GatlingMojo extends AbstractGatlingMojo {
             : null;
 
     if (targetsIoEnabled) {
-	    final int periodInMinutes = 3;
-	    getLog().info(String.format("Calling targetsIO (%s) keep alive every %d minutes.", targetsIoUrl, periodInMinutes));
+	    final int periodInSeconds = 30;
+	    getLog().info(String.format("Calling targetsIO (%s) keep alive every %d seconds.", targetsIoUrl, periodInSeconds));
 	    final TargetsIoClient.KeepAliveRunner keepAliveRunner = new TargetsIoClient.KeepAliveRunner(targetsIoClient);
 	    exec = Executors.newSingleThreadScheduledExecutor();
-	    exec.scheduleAtFixedRate(keepAliveRunner, 0, periodInMinutes, TimeUnit.MINUTES);
+	    exec.scheduleAtFixedRate(keepAliveRunner, 0, periodInSeconds, TimeUnit.SECONDS);
     }
     else {
       exec = null;
