@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 public abstract class HttpClient {
 
     final int MAX_RETRIES = 10;
-    final long SLEEP_IN_MILLIS = 3000;
+    final long SLEEP_IN_MILLIS = 30_000;
 
     static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
