@@ -5,6 +5,7 @@ import okhttp3.*;
 import org.apache.maven.plugin.MojoExecutionException;
 
 import java.io.IOException;
+import java.util.Map;
 
 public class TargetsIoClient extends HttpClient {
 
@@ -17,6 +18,7 @@ public class TargetsIoClient extends HttpClient {
     private final String rampupTimeSeconds;
 
     public TargetsIoClient(String productName, String dashboardName, String testRunId, String buildResultsUrl, String productRelease, String rampupTimeInSeconds, String targetsIoUrl) {
+        super();
         this.productName = productName;
         this.dashboardName = dashboardName;
         this.testRunId = testRunId;

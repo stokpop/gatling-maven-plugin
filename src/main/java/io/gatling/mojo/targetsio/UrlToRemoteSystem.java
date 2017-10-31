@@ -16,6 +16,9 @@ public class UrlToRemoteSystem {
     private String urlToRemoteSystem;
 
     public UrlToRemoteSystem(String urlWithPlaceHolders, TestRunClock testRunClock) throws MojoExecutionException {
+        if (urlWithPlaceHolders == null) {
+            throw new MojoExecutionException(String.format("The remote system url is null."));
+        }
         if (!PLACEHOLDER_TEST_START_TIME.matcher(urlWithPlaceHolders).find()) {
            throw new MojoExecutionException(String.format("Placeholder [%s] for test start time in missing in remote system url [%s]", PLACEHOLDER_TEST_START_TIME, urlWithPlaceHolders));
         }
@@ -33,4 +36,10 @@ public class UrlToRemoteSystem {
         return urlToRemoteSystem;
     }
 
+    @Override
+    public String toString() {
+        return "UrlToRemoteSystem{" +
+                "urlToRemoteSystem='" + urlToRemoteSystem + '\'' +
+                '}';
+    }
 }

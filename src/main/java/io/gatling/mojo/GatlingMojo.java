@@ -15,10 +15,7 @@
  */
 package io.gatling.mojo;
 
-import io.gatling.mojo.targetsio.RemoteSystemClient;
-import io.gatling.mojo.targetsio.TargetsIoClient;
-import io.gatling.mojo.targetsio.TestRunClock;
-import io.gatling.mojo.targetsio.UrlToRemoteSystem;
+import io.gatling.mojo.targetsio.*;
 import io.gatling.mojo.targetsio.log.Logger;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
@@ -260,8 +257,14 @@ public class GatlingMojo extends AbstractGatlingMojo {
   /**
    * RemoteSystem call url: Provide complete URL with ${testStartTime} and ${testEndTime} placeholders
    */
-  @Parameter(property = "gatling.urlToRemoteSystem", alias = "utrs")
-  private String urlToRemoteSystem;
+  @Parameter(property = "gatling.remoteSystemUrl", alias = "rsu")
+  private String remoteSystemUrl;
+
+  /**
+   * RemoteSystem call headers: a comma separated name:value list
+   */
+  @Parameter(property = "gatling.remoteSystemHeaders", alias = "rsh")
+  private String remoteSystemHeaders;
 
   /**
    * Executes Gatling simulations.
@@ -277,7 +280,7 @@ public class GatlingMojo extends AbstractGatlingMojo {
             ? createTargetsIoClient()
             : null;
     final RemoteSystemClient remoteSystemClient = remoteSystemCallEnabled
-            ? new RemoteSystemClient()
+            ? new RemoteSystemClient(HttpClient.parseHeaders(remoteSystemHeaders))
             : null;
 
     if (targetsIoEnabled) {
@@ -326,9 +329,15 @@ public class GatlingMojo extends AbstractGatlingMojo {
         testRunClock.setTestEndTime(System.currentTimeMillis());
     }
     if (remoteSystemCallEnabled) {
-      getLog().info("Calling remote system url.");
-      String reply = remoteSystemClient.call(new UrlToRemoteSystem(urlToRemoteSystem, testRunClock));
-      getLog().info("Reply from remote system: " + reply);
+      if (remoteSystemUrl == null) {
+        getLog().warn("Remote system url is null, call is skipped!");
+      }
+      else {
+        UrlToRemoteSystem urlToRemoteSystem = new UrlToRemoteSystem(remoteSystemUrl, testRunClock);
+        getLog().info(String.format("Calling remote system url [%s]", urlToRemoteSystem));
+        String reply = remoteSystemClient.call(urlToRemoteSystem);
+        getLog().info("Reply from remote system: " + reply);
+      }
     }
     if (targetsIoEnabled) {
       targetsIoClient.callTargetsIoFor(TargetsIoClient.Action.End);

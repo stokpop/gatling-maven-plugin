@@ -4,10 +4,17 @@ import okhttp3.Request;
 import org.apache.maven.plugin.MojoExecutionException;
 
 import java.io.IOException;
+import java.util.Map;
 
 public class RemoteSystemClient extends HttpClient {
 
-    public RemoteSystemClient() {}
+    public RemoteSystemClient() {
+        super();
+    }
+
+    public RemoteSystemClient(Map<String, String> headers) {
+       super(headers);
+    }
 
     /**
      * Call remote system using the UrlToRemoteSystem object.
@@ -18,10 +25,11 @@ public class RemoteSystemClient extends HttpClient {
 
         final String url = urlToRemoteSystem.urlBasedOnTestRunClock();
 
-        final Request request = new Request.Builder()
+        final Request.Builder requestBuilder = new Request.Builder()
                 .url(url)
-                .get()
-                .build();
+                .get();
+        getHeaders().forEach(requestBuilder::addHeader);
+        final Request request = requestBuilder.build();
 
         return getReplyForRequestWithRetries(request, MAX_RETRIES, SLEEP_IN_MILLIS);
     }

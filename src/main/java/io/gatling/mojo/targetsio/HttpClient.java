@@ -6,6 +6,10 @@ import okhttp3.*;
 import org.apache.maven.plugin.MojoExecutionException;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public abstract class HttpClient {
 
@@ -17,6 +21,16 @@ public abstract class HttpClient {
 
     final OkHttpClient client = new OkHttpClient();
     Logger logger = new SystemOutLogger();
+
+    private Map<String, String> headers;
+
+    HttpClient() {
+        this(Collections.emptyMap());
+    }
+
+    HttpClient(Map<String, String> headers) {
+        this.headers = headers;
+    }
 
     public void injectLogger(Logger logger) {
         this.logger = logger;
@@ -30,7 +44,7 @@ public abstract class HttpClient {
                 try (Response response = client.newCall(request).execute()) {
 
                     ResponseBody responseBody = response.body();
-                    if (response.code() == 200) {
+                    if (isHttpSuccessCode(response.code())) {
                         replyBody = responseBody == null ? "null" : responseBody.string();
                         break;
                     } else {
@@ -52,5 +66,25 @@ public abstract class HttpClient {
             }
         }
         return replyBody;
+    }
+
+    private static boolean isHttpSuccessCode(int code) {
+        return code >= 200 && code < 300;
+    }
+
+    public Map<String, String> getHeaders() {
+        return headers;
+    }
+
+    /**
+     * Parse http headers into Map.
+     * @param headers a comma separated list of name:value pairs
+     * @return unmodifiable Map with header name-value pairs
+     */
+    public static Map<String, String> parseHeaders(String headers) {
+        if (headers == null) { return Collections.emptyMap(); }
+        return Collections.unmodifiableMap(Arrays.stream(headers.split(","))
+                .map(pair -> pair.split(":"))
+                .collect(Collectors.toMap(nameValue -> nameValue[0], nameValue -> nameValue[1])));
     }
 }
