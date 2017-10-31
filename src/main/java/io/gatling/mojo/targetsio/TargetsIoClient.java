@@ -1,18 +1,12 @@
-package io.gatling.mojo;
+package io.gatling.mojo.targetsio;
 
+import io.gatling.mojo.targetsio.log.Logger;
 import okhttp3.*;
 import org.apache.maven.plugin.MojoExecutionException;
 
 import java.io.IOException;
 
-public class TargetsIoClient {
-
-    private Logger logger = new SystemOutLogger();
-
-    private static final MediaType JSON
-            = MediaType.parse("application/json; charset=utf-8");
-
-    private final OkHttpClient client = new OkHttpClient();
+public class TargetsIoClient extends HttpClient {
 
     private final String productName;
     private final String dashboardName;
@@ -71,39 +65,13 @@ public class TargetsIoClient {
     public String callCheckAsserts() throws IOException, MojoExecutionException {
         // example: https://targets-io.com/benchmarks/DASHBOARD/NIGHTLY/TEST-RUN-831
         String url = String.join("/",targetsIoUrl, "benchmarks", productName, dashboardName, testRunId);
+
         Request request = new Request.Builder()
                 .url(url)
                 .get()
                 .build();
 
-        int retries = 0;
-        final int MAX_RETRIES = 10;
-        final long sleepInMillis = 3000;
-        String assertions = null;
-
-        while (retries <= MAX_RETRIES) {
-            try (Response response = client.newCall(request).execute()) {
-
-                ResponseBody responseBody = response.body();
-                if (response.code() == 200) {
-                    assertions = responseBody == null ? "null" : responseBody.string();
-                    break;
-                } else {
-                    String message = responseBody == null ? response.message() : responseBody.string();
-                    logger.warn("failed to retrieve assertions for url [" + url + "] code [" + response.code() + "] retry [" + retries + "/" + MAX_RETRIES + "] " + message);
-                }
-                try {
-                    Thread.sleep(sleepInMillis);
-                } catch (InterruptedException e) {
-                    // ignore
-                }
-                retries = retries + 1;
-            }
-            if (retries == MAX_RETRIES) {
-                throw new MojoExecutionException("Unable to retrieve assertions for url [" + url + "]");
-            }
-        }
-        return assertions;
+        return getReplyForRequestWithRetries(request, MAX_RETRIES, SLEEP_IN_MILLIS);
     }
 
     public enum Action {
@@ -128,31 +96,6 @@ public class TargetsIoClient {
         @Override
         public void run() {
             client.callTargetsIoFor(Action.KeepAlive);
-        }
-    }
-
-    public interface Logger {
-        void info(String message);
-        void warn(String message);
-        void error(String message);
-        void debug(String message);
-    }
-
-    public static class SystemOutLogger implements Logger {
-        public void info(String message) {
-            System.out.println("INFO:  " + message);
-        }
-
-        public void warn(String message) {
-            System.out.println("WARN:  " + message);
-        }
-
-        public void error(String message) {
-            System.out.println("ERROR: " + message);
-        }
-
-        public void debug(String message) {
-            System.out.println("DEBUG: " + message);
         }
     }
 

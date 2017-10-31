@@ -15,6 +15,11 @@
  */
 package io.gatling.mojo;
 
+import io.gatling.mojo.targetsio.RemoteSystemClient;
+import io.gatling.mojo.targetsio.TargetsIoClient;
+import io.gatling.mojo.targetsio.TestRunClock;
+import io.gatling.mojo.targetsio.UrlToRemoteSystem;
+import io.gatling.mojo.targetsio.log.Logger;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
@@ -246,6 +251,17 @@ public class GatlingMojo extends AbstractGatlingMojo {
   @Parameter(property = "gatling.targetsIoEnabled", alias = "tie", defaultValue = "false")
   private boolean targetsIoEnabled;
 
+  /**
+   * RemoteSystem call: Enable call to RemoteSystem.
+   */
+  @Parameter(property = "gatling.remoteSystemCallEnabled", alias = "rsce", defaultValue = "false")
+  private boolean remoteSystemCallEnabled;
+
+  /**
+   * RemoteSystem call url: Provide complete URL with ${testStartTime} and ${testEndTime} placeholders
+   */
+  @Parameter(property = "gatling.urlToRemoteSystem", alias = "utrs")
+  private String urlToRemoteSystem;
 
   /**
    * Executes Gatling simulations.
@@ -259,6 +275,9 @@ public class GatlingMojo extends AbstractGatlingMojo {
     final ScheduledExecutorService exec;
     final TargetsIoClient targetsIoClient = targetsIoEnabled
             ? createTargetsIoClient()
+            : null;
+    final RemoteSystemClient remoteSystemClient = remoteSystemCallEnabled
+            ? new RemoteSystemClient()
             : null;
 
     if (targetsIoEnabled) {
@@ -274,6 +293,8 @@ public class GatlingMojo extends AbstractGatlingMojo {
 
     // Create results directories
     resultsFolder.mkdirs();
+
+    final TestRunClock testRunClock = new TestRunClock(System.currentTimeMillis());
     try {
         List<String> testClasspath = buildTestClasspath();
 
@@ -282,12 +303,10 @@ public class GatlingMojo extends AbstractGatlingMojo {
         executeCompiler(zincJvmArgs(), testClasspath, toolchain);
       }
 
-
-        List<String> jvmArgs = gatlingJvmArgs();
+      List<String> jvmArgs = gatlingJvmArgs();
 
       if (reportsOnly != null) {
         executeGatling(jvmArgs, gatlingArgs(null), testClasspath, toolchain);
-
       } else {
         List<String> simulations = simulations();
         iterateBySimulations(toolchain, jvmArgs, testClasspath, simulations);
@@ -305,6 +324,7 @@ public class GatlingMojo extends AbstractGatlingMojo {
           getLog().info("Shut down keep alive executor.");
           exec.shutdown();
         }
+        testRunClock.setTestEndTime(System.currentTimeMillis());
     }
     if (targetsIoEnabled) {
       targetsIoClient.callTargetsIoFor(TargetsIoClient.Action.End);
@@ -319,11 +339,16 @@ public class GatlingMojo extends AbstractGatlingMojo {
         getLog().info("TargetsIO assertions disabled.");
       }
     }
+    if (remoteSystemCallEnabled) {
+      getLog().info("Calling remote system url.");
+      String reply = remoteSystemClient.call(new UrlToRemoteSystem(urlToRemoteSystem, testRunClock));
+      getLog().info("Reply from remote system: " + reply);
+    }
   }
 
   private TargetsIoClient createTargetsIoClient() {
     TargetsIoClient client = new TargetsIoClient(productName, dashboardName, testRunId, buildResultsUrl, productRelease, rampupTimeInSeconds, targetsIoUrl);
-    client.injectLogger(new TargetsIoClient.Logger() {
+    client.injectLogger(new Logger() {
       @Override
       public void info(String message) {
         getLog().info(message);

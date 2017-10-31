@@ -129,23 +129,6 @@
 					</configuration>
 				</plugin>
 				<plugin>
-					<groupId>com.mycila.maven-license-plugin</groupId>
-					<artifactId>maven-license-plugin</artifactId>
-					<version>${maven-license-plugin.version}</version>
-					<configuration>
-						<header>${header.basedir}/src/etc/header.txt</header>
-						<strictCheck>false</strictCheck>
-					</configuration>
-					<executions>
-						<execution>
-							<phase>process-sources</phase>
-							<goals>
-								<goal>format</goal>
-							</goals>
-						</execution>
-					</executions>
-				</plugin>
-				<plugin>
 					<groupId>org.sonatype.plugins</groupId>
 					<artifactId>nexus-staging-maven-plugin</artifactId>
 					<version>${nexus-staging-maven-plugin.version}</version>
@@ -160,6 +143,8 @@
 					<artifactId>maven-license-plugin</artifactId>
 					<version>${maven-license-plugin.version}</version>
 					<configuration>
+						<header>${header.basedir}/src/etc/header.txt</header>
+						<strictCheck>false</strictCheck>
 						<excludes>
 							<exclude>src/main/resources/*</exclude>
 							<exclude>**/LICENSE</exclude>
@@ -168,6 +153,14 @@
 							<exclude>make_credentials.py</exclude>
 						</excludes>
 					</configuration>
+					<executions>
+						<execution>
+							<phase>process-sources</phase>
+							<goals>
+								<goal>format</goal>
+							</goals>
+						</execution>
+					</executions>
 				</plugin>
 			</plugins>
 		</pluginManagement>
@@ -194,10 +187,10 @@
 					</execution>
 				</executions>
 			</plugin>
-			<plugin>
-				<groupId>com.mycila.maven-license-plugin</groupId>
-				<artifactId>maven-license-plugin</artifactId>
-			</plugin>
+			<!--<plugin>-->
+				<!--<groupId>com.mycila.maven-license-plugin</groupId>-->
+				<!--<artifactId>maven-license-plugin</artifactId>-->
+			<!--</plugin>-->
 			<plugin>
 				<groupId>org.sonatype.plugins</groupId>
 				<artifactId>nexus-staging-maven-plugin</artifactId>
