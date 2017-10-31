@@ -296,14 +296,13 @@ public class GatlingMojo extends AbstractGatlingMojo {
 
     final TestRunClock testRunClock = new TestRunClock(System.currentTimeMillis());
     try {
-        List<String> testClasspath = buildTestClasspath();
-
         Toolchain toolchain = toolchainManager.getToolchainFromBuildContext("jdk", session);
       if (!disableCompiler) {
-        executeCompiler(zincJvmArgs(), testClasspath, toolchain);
+        executeCompiler(zincJvmArgs(), buildTestClasspath(true), toolchain);
       }
 
       List<String> jvmArgs = gatlingJvmArgs();
+      List<String> testClasspath = buildTestClasspath(false);
 
       if (reportsOnly != null) {
         executeGatling(jvmArgs, gatlingArgs(null), testClasspath, toolchain);
@@ -326,6 +325,11 @@ public class GatlingMojo extends AbstractGatlingMojo {
         }
         testRunClock.setTestEndTime(System.currentTimeMillis());
     }
+    if (remoteSystemCallEnabled) {
+      getLog().info("Calling remote system url.");
+      String reply = remoteSystemClient.call(new UrlToRemoteSystem(urlToRemoteSystem, testRunClock));
+      getLog().info("Reply from remote system: " + reply);
+    }
     if (targetsIoEnabled) {
       targetsIoClient.callTargetsIoFor(TargetsIoClient.Action.End);
       if (assertResultsEnabled) {
@@ -338,11 +342,6 @@ public class GatlingMojo extends AbstractGatlingMojo {
       else {
         getLog().info("TargetsIO assertions disabled.");
       }
-    }
-    if (remoteSystemCallEnabled) {
-      getLog().info("Calling remote system url.");
-      String reply = remoteSystemClient.call(new UrlToRemoteSystem(urlToRemoteSystem, testRunClock));
-      getLog().info("Reply from remote system: " + reply);
     }
   }
 
@@ -421,8 +420,7 @@ public class GatlingMojo extends AbstractGatlingMojo {
 
   private void executeCompiler(List<String> zincJvmArgs, List<String> testClasspath, Toolchain toolchain) throws Exception {
     List<String> compilerClasspath = buildCompilerClasspath();
-    compilerClasspath.addAll(testClasspath);
-    List<String> compilerArguments = compilerArgs();
+    List<String> compilerArguments = compilerArgs(testClasspath);
 
     Fork forkedCompiler = new Fork(COMPILER_MAIN_CLASS, compilerClasspath, zincJvmArgs, compilerArguments, toolchain, false, getLog());
     try {
@@ -433,7 +431,6 @@ public class GatlingMojo extends AbstractGatlingMojo {
   }
 
   private void executeGatling(List<String> gatlingJvmArgs, List<String> gatlingArgs, List<String> testClasspath, Toolchain toolchain) throws Exception {
-
     Fork forkedGatling = new Fork(GATLING_MAIN_CLASS, testClasspath, gatlingJvmArgs, gatlingArgs, toolchain, propagateSystemProperties, getLog());
     try {
       forkedGatling.run();
@@ -556,8 +553,9 @@ public class GatlingMojo extends AbstractGatlingMojo {
     return args;
   }
 
-  private List<String> compilerArgs() throws Exception {
+  private List<String> compilerArgs(List<String> classpathElements) throws Exception {
     List<String> args = new ArrayList<>();
+    args.addAll(asList("-ccp", MojoUtils.toMultiPath(classpathElements)));
     args.addAll(asList("-sf", simulationsFolder.getCanonicalPath()));
     args.addAll(asList("-bf", compiledClassesFolder.getCanonicalPath()));
     return args;
