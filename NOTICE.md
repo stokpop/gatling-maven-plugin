@@ -1,3 +1,15 @@
+Targets.io maven plugin 
+===============================
+
+This is a fork of the gatling-maven-plugin. 
+* https://github.com/gatling/gatling-maven-plugin
+
+It adds integration points to targets.io performance test dashboard.
+* https://github.com/dmoll1974/targets-io
+
+Code additions have been indicated in the changed java files. 
+Also, a patch file is included with the changes.
+
 Gatling
 =======
 
@@ -40,3 +52,8 @@ This product depends on plexus-utils, distributed by CodeHaus:
 
   * License: license/LICENSE.plexus-utils.al20.txt (Apache License v2.0)
   * Homepage: https://codehaus-plexus.github.io/plexus-utils
+  
+This product depends on okhttp, distibuted by Square, Inc:
+
+  * License: license/LICENSE.okhttp.al20.txt
+  * Homepage: http://square.github.io/okhttp/
