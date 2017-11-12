@@ -35,6 +35,7 @@ public class RemoteSystemClient extends HttpClient {
 
     /**
      * Call remote system using the UrlToRemoteSystem object.
+     * @param urlToRemoteSystem the url of the remote (targetsio) to call
      * @return json string such as {"meetsRequirement":true,"benchmarkResultPreviousOK":true,"benchmarkResultFixedOK":true}
      * @throws MojoExecutionException when call fails
      */

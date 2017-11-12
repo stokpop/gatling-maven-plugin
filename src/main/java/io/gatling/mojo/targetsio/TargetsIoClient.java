@@ -79,9 +79,9 @@ public class TargetsIoClient extends HttpClient {
     /**
      * Call asserts for this test run.
      * @return json string such as {"meetsRequirement":true,"benchmarkResultPreviousOK":true,"benchmarkResultFixedOK":true}
-     * @throws IOException when call fails
+     * @throws MojoExecutionException when remote call fails
      */
-    public String callCheckAsserts() throws IOException, MojoExecutionException {
+    public String callCheckAsserts() throws MojoExecutionException {
         // example: https://targets-io.com/benchmarks/DASHBOARD/NIGHTLY/TEST-RUN-831
         String url = String.join("/",targetsIoUrl, "benchmarks", productName, dashboardName, testRunId);
 

@@ -23,9 +23,14 @@ import java.util.regex.Pattern;
 
 /**
  * The url to call to a remote system after the test.
- * Has a test run start and end time to be included, see per example.
+ * Has test run start and end time parameters to be included, see example.
  *
- * Example: http://domain.com/path/something?startTime=${testStartTime}&endTime=${testEndTime}&ticket=XXXX&token=YYYY
+ * <p>Example:
+ * <pre>
+ * {@literal
+ *   http://domain.com/path/something?startTime=${testStartTime}&endTime=${testEndTime}&ticket=XXXX&token=YYYY
+ * }
+ * </pre>
  */
 public class UrlToRemoteSystem {
     private static final Pattern PLACEHOLDER_TEST_START_TIME = Pattern.compile("\\{\\{testStartTime}}");
