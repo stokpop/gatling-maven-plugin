@@ -24,6 +24,7 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -273,11 +274,12 @@ public class GatlingMojo extends AbstractGatlingMojo {
    */
   @Override
   public void execute() throws MojoExecutionException {
+    Log log = getLog();
     if (skip) {
-      getLog().info("Skipping gatling-maven-plugin");
+      log.info("Skipping gatling-maven-plugin");
       return;
     }
-    final ScheduledExecutorService exec;
+    final ScheduledExecutorService targetsIoExecutor;
     final TargetsIoClient targetsIoClient = targetsIoEnabled
             ? createTargetsIoClient()
             : null;
@@ -287,19 +289,20 @@ public class GatlingMojo extends AbstractGatlingMojo {
 
     if (targetsIoEnabled) {
 	    final int periodInSeconds = 30;
-	    getLog().info(String.format("Calling targetsIO (%s) keep alive every %d seconds.", targetsIoUrl, periodInSeconds));
+	    log.info(String.format("Calling targetsIO (%s) keep alive every %d seconds.", targetsIoUrl, periodInSeconds));
 	    final TargetsIoClient.KeepAliveRunner keepAliveRunner = new TargetsIoClient.KeepAliveRunner(targetsIoClient);
-	    exec = Executors.newSingleThreadScheduledExecutor();
-	    exec.scheduleAtFixedRate(keepAliveRunner, 0, periodInSeconds, TimeUnit.SECONDS);
+	    targetsIoExecutor = Executors.newSingleThreadScheduledExecutor();
+	    targetsIoExecutor.scheduleAtFixedRate(keepAliveRunner, 0, periodInSeconds, TimeUnit.SECONDS);
     }
     else {
-      exec = null;
+      targetsIoExecutor = null;
     }
 
     // Create results directories
     resultsFolder.mkdirs();
 
     final TestRunClock testRunClock = new TestRunClock(System.currentTimeMillis());
+    MojoExecutionException gatlingException = null;
     try {
         Toolchain toolchain = toolchainManager.getToolchainFromBuildContext("jdk", session);
       if (!disableCompiler) {
@@ -318,27 +321,48 @@ public class GatlingMojo extends AbstractGatlingMojo {
 
     } catch (Exception e) {
       if (failOnError) {
-        throw new MojoExecutionException("Gatling failed.", e);
+        log.error("Gatling failed, creating MojoExecutionException.", e);
+        gatlingException = new MojoExecutionException("Gatling failed.", e);
       } else {
-        getLog().warn("There were some errors while running your simulation, but failOnError was set to false won't fail your build.", e);
+        log.warn("There were some errors while running your simulation, but failOnError was set to false won't fail your build.", e);
       }
     } finally {
         copyJUnitReports();
-        if (exec != null) {
-          getLog().info("Shut down keep alive executor.");
-          exec.shutdown();
+        if (targetsIoExecutor != null) {
+          log.info("Shut down target IO keep alive executor.");
+          targetsIoExecutor.shutdown();
         }
         testRunClock.setTestEndTime(System.currentTimeMillis());
     }
+    try {
+      targetsIoRoundup(log, targetsIoClient, remoteSystemClient, testRunClock);
+    } catch (MojoExecutionException targetsIoException) {
+      // check if there was no gatling exception from the gatling run,
+      // otherwise we should report the targetsIo exception and still throw the gatling exception
+      if (gatlingException == null) {
+        throw targetsIoException;
+      }
+      else {
+        log.error("After a gatling exception, also a targetsio exception was thrown in targetsio roundup phase.", targetsIoException);
+        throw gatlingException;
+      }
+    }
+    // now throw the gatling failure expection
+    if (gatlingException != null) {
+      throw gatlingException;
+    }
+  }
+
+  private void targetsIoRoundup(Log log, TargetsIoClient targetsIoClient, RemoteSystemClient remoteSystemClient, TestRunClock testRunClock) throws MojoExecutionException {
     if (remoteSystemCallEnabled) {
       if (remoteSystemUrl == null) {
-        getLog().warn("Remote system url is null, call is skipped!");
+        log.warn("Remote system url is null, call is skipped!");
       }
       else {
         UrlToRemoteSystem urlToRemoteSystem = new UrlToRemoteSystem(remoteSystemUrl, testRunClock);
-        getLog().info(String.format("Calling remote system url [%s]", urlToRemoteSystem));
+        log.info(String.format("Calling remote system url [%s]", urlToRemoteSystem));
         String reply = remoteSystemClient.call(urlToRemoteSystem);
-        getLog().info("Reply from remote system: " + reply);
+        log.info("Reply from remote system: " + reply);
       }
     }
     if (targetsIoEnabled) {
@@ -351,7 +375,7 @@ public class GatlingMojo extends AbstractGatlingMojo {
         }
       }
       else {
-        getLog().info("TargetsIO assertions disabled.");
+        log.info("TargetsIO assertions disabled.");
       }
     }
   }
@@ -388,7 +412,7 @@ public class GatlingMojo extends AbstractGatlingMojo {
    * a technical issue occurs
    * @param targetsIoClient call this client
    */
-  private void assertResultsTargetIO(TargetsIoClient targetsIoClient) throws MojoExecutionException, IOException {
+  public void assertResultsTargetIO(TargetsIoClient targetsIoClient) throws MojoExecutionException, IOException {
     final String assertions = targetsIoClient.callCheckAsserts();
     if (assertions == null) {
       throw new MojoExecutionException("TargetsIO assertions could not be checked, received null");
