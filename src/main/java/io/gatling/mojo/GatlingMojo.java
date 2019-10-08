@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright 2011-2017 GatlingCorp (http://gatling.io)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * This file has been changed in the fork: targetsio-gatling-maven-plugin
+ * This file has been changed in the fork: gatling-maven-plugin-events
  */
 package io.gatling.mojo;
 
-import io.gatling.mojo.targetsio.*;
-import io.gatling.mojo.targetsio.log.Logger;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.toolchain.Toolchain;
 import org.codehaus.plexus.util.DirectoryScanner;
+import org.codehaus.plexus.util.SelectorUtils;
+import org.codehaus.plexus.util.StringUtils;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
@@ -39,75 +39,64 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
 
 import static io.gatling.mojo.MojoConstants.*;
 import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
-import static java.util.Arrays.asList;
 
 /**
  * Mojo to execute Gatling.
  */
-@Mojo(name = "execute",
+@Mojo(name = "test",
   defaultPhase = LifecyclePhase.INTEGRATION_TEST,
   requiresDependencyResolution = ResolutionScope.TEST)
-public class GatlingMojo extends AbstractGatlingMojo {
+public class GatlingMojo extends AbstractGatlingExecutionMojo {
+
+  /**
+   * A name of a Simulation class to run.
+   */
+  @Parameter(property = "gatling.simulationClass")
+  private String simulationClass;
+
+  /**
+   * Iterate over multiple simulations if more than one simulation file is found. By default false.
+   * If multiple simulations are found but {@literal runMultipleSimulations} is false the execution will fail.
+   */
+  @Parameter(property = "gatling.runMultipleSimulations", defaultValue = "false")
+  private boolean runMultipleSimulations;
+
+  /**
+   * List of include patterns to use for scanning. Includes all simulations by default.
+   */
+  @Parameter(property = "gatling.includes")
+  private String[] includes;
+
+  /**
+   * List of exclude patterns to use for scanning. Excludes none by default.
+   */
+  @Parameter(property = "gatling.excludes")
+  private String[] excludes;
 
   /**
    * Run simulation but does not generate reports. By default false.
    */
-  @Parameter(property = "gatling.noReports", alias = "nr", defaultValue = "false")
+  @Parameter(property = "gatling.noReports", defaultValue = "false")
   private boolean noReports;
 
   /**
    * Generate the reports for the simulation in this folder.
    */
-  @Parameter(property = "gatling.reportsOnly", alias = "ro")
+  @Parameter(property = "gatling.reportsOnly")
   private String reportsOnly;
 
   /**
-   * Use this folder to discover simulations that could be run.
+   * A short description of the run to include in the report.
    */
-  @Parameter(property = "gatling.simulationsFolder", alias = "sf", defaultValue = "${project.basedir}/src/test/scala")
-  private File simulationsFolder;
-
-  /**
-   * A name of a Simulation class to run.
-   */
-  @Parameter(property = "gatling.simulationClass", alias = "sc")
-  private String simulationClass;
-
-  /**
-   * Use this folder as the folder where feeders are stored.
-   */
-  @Parameter(property = "gatling.dataFolder", alias = "df", defaultValue = "${project.basedir}/src/test/resources/data")
-  private File dataFolder;
-
-  /**
-   * Use this folder as the folder where results are stored.
-   */
-  @Parameter(property = "gatling.resultsFolder", alias = "rf", defaultValue = "${project.basedir}/target/gatling")
-  private File resultsFolder;
-
-  /**
-   * Extra JVM arguments to pass when running Gatling.
-   */
-  @Parameter(property = "gatling.jvmArgs")
-  private List<String> jvmArgs;
-
-  /**
-   * Extra JVM arguments to pass when running Zinc.
-   */
-  @Parameter(property = "gatling.zincJvmArgs")
-  private List<String> zincJvmArgs;
+  @Parameter(property = "gatling.runDescription")
+  private String runDescription;
 
   /**
    * Will cause the project build to look successful, rather than fail, even
@@ -126,11 +115,20 @@ public class GatlingMojo extends AbstractGatlingMojo {
   @Parameter(property = "gatling.continueOnAssertionFailure", defaultValue = "false")
   private boolean continueOnAssertionFailure;
 
+  @Parameter(property = "gatling.useOldJenkinsJUnitSupport", defaultValue = "false")
+  private boolean useOldJenkinsJUnitSupport;
+
   /**
-   * Force the name of the directory generated for the results of the run.
+   * Extra JVM arguments to pass when running Gatling.
    */
-  @Parameter(property = "gatling.outputName", alias = "on")
-  private String outputDirectoryBaseName;
+  @Parameter(property = "gatling.jvmArgs")
+  private List<String> jvmArgs;
+
+  /**
+   * Override Gatling's default JVM args, instead of replacing them.
+   */
+  @Parameter(property = "gatling.overrideJvmArgs", defaultValue = "false")
+  private boolean overrideJvmArgs;
 
   /**
    * Propagate System properties to forked processes.
@@ -139,10 +137,22 @@ public class GatlingMojo extends AbstractGatlingMojo {
   private boolean propagateSystemProperties;
 
   /**
-   * Disable the plugin.
+   * Extra JVM arguments to pass when running Zinc.
    */
-  @Parameter(property = "gatling.skip", defaultValue = "false")
-  private boolean skip;
+  @Parameter(property = "gatling.compilerJvmArgs")
+  private List<String> compilerJvmArgs;
+
+  /**
+   * Override Zinc's default JVM args, instead of replacing them.
+   */
+  @Parameter(property = "gatling.overrideCompilerJvmArgs", defaultValue = "false")
+  private boolean overrideCompilerJvmArgs;
+
+  /**
+   * Extra options to be passed to scalac when compiling the Scala code
+   */
+  @Parameter(property = "gatling.extraScalacOptions")
+  private List<String> extraScalacOptions;
 
   /**
    * Disable the Scala compiler, if scala-maven-plugin is already in charge
@@ -152,50 +162,21 @@ public class GatlingMojo extends AbstractGatlingMojo {
   private boolean disableCompiler;
 
   /**
-   * List of list of include patterns to use for scanning. Includes all simulations by default.
+   * Use this folder to discover simulations that could be run.
    */
-  @Parameter(property = "gatling.includes")
-  private String[] includes;
+  @Parameter(property = "gatling.simulationsFolder", defaultValue = "${project.basedir}/src/test/scala")
+  private File simulationsFolder;
 
   /**
-   * List of list of exclude patterns to use for scanning. By default empty.
+   * Use this folder as the folder where feeders are stored.
    */
-  @Parameter(property = "gatling.excludes")
-  private String[] excludes;
-
-  /**
-   * Iterate over multiple simulations if more than one simulation file is found. By default false.
-   * If multiple simulations are found but {@literal runMultipleSimulations} is false the execution will fail.
-   */
-  @Parameter(defaultValue = "false")
-  private boolean runMultipleSimulations;
-
-  /**
-   * Override Gatling's default JVM args, instead of replacing them.
-   */
-  @Parameter(defaultValue = "false")
-  private boolean overrideGatlingJvmArgs;
-
-  /**
-   * Override Zinc's default JVM args, instead of replacing them.
-   */
-  @Parameter(defaultValue = "false")
-  private boolean overrideZincJvmArgs;
+  @Parameter(property = "gatling.resourcesFolder", defaultValue = "${project.basedir}/src/test/resources")
+  private File resourcesFolder;
 
   @Parameter(defaultValue = "${plugin.artifacts}", readonly = true)
   private List<Artifact> artifacts;
 
-  @Parameter(defaultValue = "${basedir}/target/gatling", readonly = true)
-  private File reportsDirectory;
-
-  @Parameter(property = "gatling.useOldJenkinsJUnitSupport", defaultValue = "false")
-  private boolean useOldJenkinsJUnitSupport;
-
-  /**
-   * A short description of the run to include in the report.
-   */
-  @Parameter(property = "gatling.runDescription")
-  private String runDescription;
+  private Set<File> existingDirectories;
 
   /**
    * TargetsIO: Name of product that is being tested.
@@ -273,47 +254,29 @@ public class GatlingMojo extends AbstractGatlingMojo {
    * Executes Gatling simulations.
    */
   @Override
-  public void execute() throws MojoExecutionException {
-    Log log = getLog();
+  public void execute() throws MojoExecutionException, MojoFailureException {
     if (skip) {
-      log.info("Skipping gatling-maven-plugin");
+      getLog().info("Skipping gatling-maven-plugin");
       return;
-    }
-    final ScheduledExecutorService targetsIoExecutor;
-    final TargetsIoClient targetsIoClient = targetsIoEnabled
-            ? createTargetsIoClient()
-            : null;
-    final RemoteSystemClient remoteSystemClient = remoteSystemCallEnabled
-            ? new RemoteSystemClient(HttpClient.parseHeaders(remoteSystemHeaders))
-            : null;
-
-    if (targetsIoEnabled) {
-	    final int periodInSeconds = 30;
-	    log.info(String.format("Calling targetsIO (%s) keep alive every %d seconds.", targetsIoUrl, periodInSeconds));
-	    final TargetsIoClient.KeepAliveRunner keepAliveRunner = new TargetsIoClient.KeepAliveRunner(targetsIoClient);
-	    targetsIoExecutor = Executors.newSingleThreadScheduledExecutor();
-	    targetsIoExecutor.scheduleAtFixedRate(keepAliveRunner, 0, periodInSeconds, TimeUnit.SECONDS);
-    }
-    else {
-      targetsIoExecutor = null;
     }
 
     // Create results directories
     resultsFolder.mkdirs();
+    existingDirectories = directoriesInResultsFolder();
 
-    final TestRunClock testRunClock = new TestRunClock(System.currentTimeMillis());
-    MojoExecutionException gatlingException = null;
     try {
-        Toolchain toolchain = toolchainManager.getToolchainFromBuildContext("jdk", session);
+      List<String> testClasspath = buildTestClasspath();
+
+      Toolchain toolchain = toolchainManager.getToolchainFromBuildContext("jdk", session);
       if (!disableCompiler) {
-        executeCompiler(zincJvmArgs(), buildTestClasspath(true), toolchain);
+        executeCompiler(compilerJvmArgs(), testClasspath, toolchain);
       }
 
       List<String> jvmArgs = gatlingJvmArgs();
-      List<String> testClasspath = buildTestClasspath(false);
 
       if (reportsOnly != null) {
         executeGatling(jvmArgs, gatlingArgs(null), testClasspath, toolchain);
+
       } else {
         List<String> simulations = simulations();
         iterateBySimulations(toolchain, jvmArgs, testClasspath, simulations);
@@ -321,108 +284,28 @@ public class GatlingMojo extends AbstractGatlingMojo {
 
     } catch (Exception e) {
       if (failOnError) {
-        log.error("Gatling failed, creating MojoExecutionException.", e);
-        gatlingException = new MojoExecutionException("Gatling failed.", e);
+        if (e instanceof GatlingSimulationAssertionsFailedException) {
+          throw new MojoFailureException(e.getMessage(), e);
+        } else if (e instanceof MojoFailureException) {
+          throw (MojoFailureException) e;
+        } else if (e instanceof MojoExecutionException) {
+          throw (MojoExecutionException) e;
+        } else {
+          throw new MojoExecutionException("Gatling failed.", e);
+        }
       } else {
-        log.warn("There were some errors while running your simulation, but failOnError was set to false won't fail your build.", e);
+        getLog().warn("There were some errors while running your simulation, but failOnError was set to false won't fail your build.");
       }
     } finally {
-        copyJUnitReports();
-        if (targetsIoExecutor != null) {
-          log.info("Shut down target IO keep alive executor.");
-          targetsIoExecutor.shutdown();
-        }
-        testRunClock.setTestEndTime(System.currentTimeMillis());
-    }
-    try {
-      targetsIoRoundup(log, targetsIoClient, remoteSystemClient, testRunClock);
-    } catch (MojoExecutionException targetsIoException) {
-      // check if there was no gatling exception from the gatling run,
-      // otherwise we should report the targetsIo exception and still throw the gatling exception
-      if (gatlingException == null) {
-        throw targetsIoException;
-      }
-      else {
-        log.error("After a gatling exception, also a targetsio exception was thrown in targetsio roundup phase.", targetsIoException);
-        throw gatlingException;
-      }
-    }
-    // now throw the gatling failure expection
-    if (gatlingException != null) {
-      throw gatlingException;
+      recordSimulationResults();
     }
   }
 
-  private void targetsIoRoundup(Log log, TargetsIoClient targetsIoClient, RemoteSystemClient remoteSystemClient, TestRunClock testRunClock) throws MojoExecutionException {
-    if (remoteSystemCallEnabled) {
-      if (remoteSystemUrl == null) {
-        log.warn("Remote system url is null, call is skipped!");
-      }
-      else {
-        UrlToRemoteSystem urlToRemoteSystem = new UrlToRemoteSystem(remoteSystemUrl, testRunClock);
-        log.info(String.format("Calling remote system url [%s]", urlToRemoteSystem));
-        String reply = remoteSystemClient.call(urlToRemoteSystem);
-        log.info("Reply from remote system: " + reply);
-      }
-    }
-    if (targetsIoEnabled) {
-      targetsIoClient.callTargetsIoFor(TargetsIoClient.Action.End);
-      if (assertResultsEnabled) {
-        try {
-          assertResultsTargetIO(targetsIoClient);
-        } catch (IOException e) {
-          throw new MojoExecutionException("TargetsIO assertions check failed. " + e.getMessage(), e);
-        }
-      }
-      else {
-        log.info("TargetsIO assertions disabled.");
-      }
-    }
-  }
-
-  private TargetsIoClient createTargetsIoClient() {
-    TargetsIoClient client = new TargetsIoClient(productName, dashboardName, testRunId, buildResultsUrl, productRelease, rampupTimeInSeconds, targetsIoUrl);
-    client.injectLogger(new Logger() {
-      @Override
-      public void info(String message) {
-        getLog().info(message);
-      }
-
-      @Override
-      public void warn(String message) {
-        getLog().warn(message);
-      }
-
-      @Override
-      public void error(String message) {
-        getLog().error(message);
-      }
-
-      @Override
-      public void debug(final String message) {
-      	getLog().debug(message);
-      }
-    });
-    return client;
-  }
-
-  /**
-   * Call the target io assertions and let build fail when not OK
-   * @throws MojoExecutionException when the assertion check fails or
-   * a technical issue occurs
-   * @param targetsIoClient call this client
-   */
-  public void assertResultsTargetIO(TargetsIoClient targetsIoClient) throws MojoExecutionException, IOException {
-    final String assertions = targetsIoClient.callCheckAsserts();
-    if (assertions == null) {
-      throw new MojoExecutionException("TargetsIO assertions could not be checked, received null");
-    }
-    if (assertions.contains("false")) {
-      throw new MojoExecutionException("One of TargetsIO assertions is false: " + assertions);
-    }
-    else {
-      getLog().info("TargetsIO assertions are OK: " + assertions);
-    }
+  private Set<File> directoriesInResultsFolder() {
+    File[] directories = resultsFolder.listFiles(File::isDirectory);
+    return (directories == null)
+            ? Collections.emptySet()
+            : new HashSet<>(Arrays.asList(directories));
   }
 
   private void iterateBySimulations(Toolchain toolchain, List<String> jvmArgs, List<String> testClasspath, List<String> simulations) throws Exception {
@@ -455,7 +338,8 @@ public class GatlingMojo extends AbstractGatlingMojo {
 
   private void executeCompiler(List<String> zincJvmArgs, List<String> testClasspath, Toolchain toolchain) throws Exception {
     List<String> compilerClasspath = buildCompilerClasspath();
-    List<String> compilerArguments = compilerArgs(testClasspath);
+    compilerClasspath.addAll(testClasspath);
+    List<String> compilerArguments = compilerArgs();
 
     Fork forkedCompiler = new Fork(COMPILER_MAIN_CLASS, compilerClasspath, zincJvmArgs, compilerArguments, toolchain, false, getLog());
     try {
@@ -477,18 +361,41 @@ public class GatlingMojo extends AbstractGatlingMojo {
     }
   }
 
+  private void recordSimulationResults() throws MojoExecutionException {
+    try {
+      saveListOfNewRunDirectories();
+      copyJUnitReports();
+    } catch (IOException e) {
+      throw new MojoExecutionException("Could not record simulation results.", e);
+    }
+  }
+
+  private void saveListOfNewRunDirectories() throws IOException {
+    Path resultsFile = resultsFolder.toPath().resolve(LAST_RUN_FILE);
+
+    try (BufferedWriter writer = Files.newBufferedWriter(resultsFile)) {
+      for (File directory : directoriesInResultsFolder()) {
+        if (isNewDirectory(directory)) {
+          writer.write(directory.getName() + System.lineSeparator());
+        }
+      }
+    }
+  }
+
+  private boolean isNewDirectory(File directory) {
+    return !existingDirectories.contains(directory);
+  }
+
   private void copyJUnitReports() throws MojoExecutionException {
 
     try {
       if (useOldJenkinsJUnitSupport) {
-        File[] runDirectories = reportsDirectory.listFiles(File::isDirectory);
-
-        for (File runDirectory: runDirectories) {
-          File jsDir = new File(runDirectory, "js");
+        for (File directory: directoriesInResultsFolder()) {
+          File jsDir = new File(directory, "js");
           if (jsDir.exists() && jsDir.isDirectory()) {
             File assertionFile = new File(jsDir, "assertions.xml");
             if (assertionFile.exists()) {
-              File newAssertionFile = new File(reportsDirectory, "assertions-" + runDirectory.getName() + ".xml");
+              File newAssertionFile = new File(resultsFolder, "assertions-" + directory.getName() + ".xml");
               Files.copy(assertionFile.toPath(), newAssertionFile.toPath(), COPY_ATTRIBUTES, REPLACE_EXISTING);
               getLog().info("Copying assertion file " + assertionFile.getCanonicalPath() + " to " + newAssertionFile.getCanonicalPath());
             }
@@ -524,25 +431,30 @@ public class GatlingMojo extends AbstractGatlingMojo {
   }
 
   private List<String> gatlingJvmArgs() {
-    List<String> completeGatlingJvmArgs = new ArrayList<>();
-    if(jvmArgs != null) {
-      completeGatlingJvmArgs.addAll(jvmArgs);
-    }
-    if (overrideGatlingJvmArgs) {
-      completeGatlingJvmArgs.addAll(GATLING_JVM_ARGS);
-    }
-    return completeGatlingJvmArgs;
+    return computeArgs(jvmArgs, GATLING_JVM_ARGS, overrideJvmArgs);
   }
 
-  private List<String> zincJvmArgs() {
-    List<String> completeZincJvmArgs = new ArrayList<>();
-    if(zincJvmArgs != null) {
-      completeZincJvmArgs.addAll(zincJvmArgs);
+  private List<String> compilerJvmArgs() {
+    return computeArgs(compilerJvmArgs, COMPILER_JVM_ARGS, overrideCompilerJvmArgs);
+  }
+
+  private List<String> computeArgs0(List<String> custom, List<String> defaults, boolean override) {
+    if (custom.isEmpty()) {
+      return defaults;
     }
-    if (overrideZincJvmArgs) {
-      completeZincJvmArgs.addAll(ZINC_JVM_ARGS);
+    if (override) {
+      List<String> merged = new ArrayList<>(custom);
+      merged.addAll(defaults);
+      return merged;
     }
-    return completeZincJvmArgs;
+    return custom;
+  }
+
+  private List<String> computeArgs(List<String> custom, List<String> defaults, boolean override) {
+    List<String> result = new ArrayList<>(computeArgs0(custom, defaults, override));
+    // force disable disableClassPathURLCheck because Debian messed up and takes forever to fix, see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=911925
+    result.add("-Djdk.net.URLClassPath.disableClassPathURLCheck=true");
+    return result;
   }
 
   private List<String> simulations() throws MojoFailureException {
@@ -571,28 +483,31 @@ public class GatlingMojo extends AbstractGatlingMojo {
   private List<String> gatlingArgs(String simulationClass) throws Exception {
     // Arguments
     List<String> args = new ArrayList<>();
-    args.addAll(asList("-df", dataFolder.getCanonicalPath(),
-                       "-rf", resultsFolder.getCanonicalPath(),
-                       "-bdf", bodiesFolder.getCanonicalPath(),
-                       "-sf", simulationsFolder.getCanonicalPath(),
-                       "-rd", runDescription));
+    addArg(args, "rsf", resourcesFolder.getCanonicalPath());
+    addArg(args, "rf", resultsFolder.getCanonicalPath());
+    addArg(args, "sf", simulationsFolder.getCanonicalPath());
+
+    addArg(args, "rd", runDescription);
 
     if (noReports) {
       args.add("-nr");
     }
 
-    addToArgsIfNotNull(args, simulationClass, "s");
-    addToArgsIfNotNull(args, reportsOnly, "ro");
-    addToArgsIfNotNull(args, outputDirectoryBaseName, "on");
+    addArg(args, "s", simulationClass);
+    addArg(args, "ro", reportsOnly);
 
     return args;
   }
 
-  private List<String> compilerArgs(List<String> classpathElements) throws Exception {
+  private List<String> compilerArgs() throws Exception {
     List<String> args = new ArrayList<>();
-    args.addAll(asList("-ccp", MojoUtils.toMultiPath(classpathElements)));
-    args.addAll(asList("-sf", simulationsFolder.getCanonicalPath()));
-    args.addAll(asList("-bf", compiledClassesFolder.getCanonicalPath()));
+    addArg(args, "sf", simulationsFolder.getCanonicalPath());
+    addArg(args, "bf", compiledClassesFolder.getCanonicalPath());
+
+    if (!extraScalacOptions.isEmpty()) {
+      addArg(args, "eso", StringUtils.join(extraScalacOptions.iterator(), ","));
+    }
+
     return args;
   }
 
@@ -615,8 +530,8 @@ public class GatlingMojo extends AbstractGatlingMojo {
       for (String classFile: compiledClassFiles()) {
         String className = pathToClassName(classFile);
 
-        boolean isIncluded = includes.isEmpty() || includes.contains(className);
-        boolean isExcluded =  excludes.contains(className);
+        boolean isIncluded = includes.isEmpty() || match(includes, className);
+        boolean isExcluded =  match(excludes, className);
 
         if (isIncluded && !isExcluded) {
           // check if the class is a concrete Simulation
@@ -632,6 +547,15 @@ public class GatlingMojo extends AbstractGatlingMojo {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private static boolean match(List<String> patterns, String string) {
+    for (String pattern : patterns) {
+      if (SelectorUtils.match(pattern, string)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private URL[] testClassPathUrls() throws DependencyResolutionRequiredException, MalformedURLException {
@@ -653,7 +577,9 @@ public class GatlingMojo extends AbstractGatlingMojo {
     scanner.setBasedir(compiledClassesFolder.getCanonicalPath());
     scanner.setIncludes(new String[]{"**/*.class"});
     scanner.scan();
-    return scanner.getIncludedFiles();
+    String[] files = scanner.getIncludedFiles();
+    Arrays.sort(files);
+    return files;
   }
 
   private String pathToClassName(String path) {

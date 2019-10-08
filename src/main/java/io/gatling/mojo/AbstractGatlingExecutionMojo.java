@@ -15,12 +15,23 @@
  */
 package io.gatling.mojo;
 
-import org.apache.maven.plugins.annotations.LifecyclePhase;
-import org.apache.maven.plugins.annotations.Mojo;
-import org.apache.maven.plugins.annotations.ResolutionScope;
+import org.apache.maven.plugins.annotations.Parameter;
 
-@Mojo(name = "test",
-        defaultPhase = LifecyclePhase.TEST,
-        requiresDependencyResolution = ResolutionScope.TEST)
-public class GatlingTestMojo extends GatlingMojo {
+import java.io.File;
+
+public abstract class AbstractGatlingExecutionMojo extends AbstractGatlingMojo {
+
+    static final String LAST_RUN_FILE = "lastRun.txt";
+
+    /**
+     * Use this folder as the folder where results are stored.
+     */
+    @Parameter(property = "gatling.resultsFolder", defaultValue = "${project.build.directory}/gatling")
+    protected File resultsFolder;
+
+    /**
+     * Disable the plugin.
+     */
+    @Parameter(property = "gatling.skip", defaultValue = "false")
+    protected boolean skip;
 }

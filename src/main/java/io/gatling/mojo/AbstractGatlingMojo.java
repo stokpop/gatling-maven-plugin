@@ -35,12 +35,6 @@ import static java.util.Arrays.asList;
 public abstract class AbstractGatlingMojo extends AbstractMojo {
 
   /**
-   * Use this folder as the folder where request bodies are stored.
-   */
-  @Parameter(property = "gatling.bodiesFolder", alias = "bdf", defaultValue = "${project.basedir}/src/test/resources/bodies")
-  protected File bodiesFolder;
-
-  /**
    * Use this folder as the configuration directory.
    */
   @Parameter(property = "gatling.configFolder", alias = "cd", defaultValue = "${project.basedir}/src/test/resources")
@@ -77,7 +71,7 @@ public abstract class AbstractGatlingMojo extends AbstractMojo {
   private RepositorySystem repository;
 
 
-  protected List<String> buildTestClasspath(boolean includeCompiler) throws Exception {
+  protected List<String> buildTestClasspath() throws Exception {
     List<String> testClasspathElements = new ArrayList<>();
 
     if (!new File(compiledClassesFolder, "gatling.conf").exists()) {
@@ -87,12 +81,6 @@ public abstract class AbstractGatlingMojo extends AbstractMojo {
     }
 
     testClasspathElements.addAll(mavenProject.getTestClasspathElements());
-
-    if (includeCompiler) {
-      String scalaVersion = getVersion("org.scala-lang", "scala-library");
-      Artifact scalaCompiler = resolve("org.scala-lang", "scala-compiler", scalaVersion, false).getArtifacts().iterator().next();
-      testClasspathElements.add(scalaCompiler.getFile().getCanonicalPath());
-    }
 
     // Add plugin jar to classpath (used by MainWithArgsInFile)
     testClasspathElements.add(MojoUtils.locateJar(GatlingMojo.class));
@@ -109,7 +97,7 @@ public abstract class AbstractGatlingMojo extends AbstractMojo {
     throw new UnsupportedOperationException("Couldn't locate " + groupId + ":" + artifactId + " in classpath");
   }
 
-  protected ArtifactResolutionResult resolve(String groupId, String artifactId, String version, boolean resolveTransitively) throws Exception {
+  protected ArtifactResolutionResult resolve(String groupId, String artifactId, String version, boolean resolveTransitively) {
     Artifact artifact = repository.createArtifact(groupId, artifactId, version, Artifact.SCOPE_RUNTIME, "jar");
     ArtifactResolutionRequest request =
             new ArtifactResolutionRequest()
@@ -124,7 +112,7 @@ public abstract class AbstractGatlingMojo extends AbstractMojo {
     return repository.resolve(request);
   }
 
-  protected void addToArgsIfNotNull(List<String> args, Object value, String flag) {
+  protected void addArg(List<String> args, String flag, Object value) {
     if(value != null) {
       args.addAll(asList("-" + flag, value.toString()));
     }

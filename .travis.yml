@@ -1,9 +1,9 @@
 language: java
 jdk:
   - oraclejdk8
-before_script: "[[ $TRAVIS_PULL_REQUEST == \"false\" ]]"
 script:
-  - "[[ $TRAVIS_PULL_REQUEST == \"false\" ]] && mvn test || true"
+  - find $HOME/.m2 -name "_remote.repositories" | xargs rm
+  - mvn verify
 
 sudo: false
 

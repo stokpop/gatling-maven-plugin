@@ -23,6 +23,7 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.toolchain.Toolchain;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -62,8 +63,14 @@ public class RecorderMojo extends AbstractGatlingMojo {
   /**
    * Uses as the folder where generated simulations will be stored.
    */
-  @Parameter(property = "gatling.recorder.outputFolder", alias = "of", defaultValue = "${project.basedir}/src/test/scala")
-  private String outputFolder;
+  @Parameter(property = "gatling.recorder.simulationsFolder", alias = "sf", defaultValue = "${project.basedir}/src/test/scala")
+  private File simulationsFolder;
+
+  /**
+   * Use this folder as the folder where feeders are stored.
+   */
+  @Parameter(property = "gatling.recorder.resourcesFolder", alias = "rsf", defaultValue = "${project.basedir}/src/test/resources")
+  private File resourcesFolder;
 
   /**
    * The name of the generated class.
@@ -92,28 +99,30 @@ public class RecorderMojo extends AbstractGatlingMojo {
   @Override
   public void execute() throws MojoExecutionException, MojoFailureException {
     try {
-      List<String> testClasspath = buildTestClasspath(false);
+      List<String> testClasspath = buildTestClasspath();
       List<String> recorderArgs = recorderArgs();
       Toolchain toolchain = toolchainManager.getToolchainFromBuildContext("jdk", session);
       Fork forkedRecorder = new Fork(RECORDER_MAIN_CLASS, testClasspath, GATLING_JVM_ARGS, recorderArgs, toolchain, false, getLog());
       forkedRecorder.run();
+    } catch (MojoExecutionException | MojoFailureException e) {
+      throw e;
     } catch (Exception e) {
       throw new MojoExecutionException("Recorder execution failed", e);
     }
   }
 
-  private List<String> recorderArgs() {
+  private List<String> recorderArgs() throws Exception {
     List<String> arguments = new ArrayList<>();
-    addToArgsIfNotNull(arguments, outputFolder, "of");
-    addToArgsIfNotNull(arguments, bodiesFolder, "bdf");
-    addToArgsIfNotNull(arguments, localPort, "lp");
-    addToArgsIfNotNull(arguments, proxyHost, "ph");
-    addToArgsIfNotNull(arguments, proxyPort, "pp");
-    addToArgsIfNotNull(arguments, proxySSLPort, "pps");
-    addToArgsIfNotNull(arguments, className, "cn");
-    addToArgsIfNotNull(arguments, packageName, "pkg");
-    addToArgsIfNotNull(arguments, encoding, "enc");
-    addToArgsIfNotNull(arguments, followRedirect, "fr");
+    addArg(arguments, "lp", localPort);
+    addArg(arguments, "ph", proxyHost);
+    addArg(arguments, "pp", proxyPort);
+    addArg(arguments, "pps", proxySSLPort);
+    addArg(arguments, "sf", simulationsFolder.getCanonicalPath());
+    addArg(arguments, "rsf", resourcesFolder.getCanonicalPath());
+    addArg(arguments, "cn", className);
+    addArg(arguments, "pkg", packageName);
+    addArg(arguments, "enc", encoding);
+    addArg(arguments, "fr", followRedirect);
     return arguments;
   }
 }
