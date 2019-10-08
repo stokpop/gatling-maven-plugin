@@ -94,6 +94,11 @@
 				<artifactId>junit-jupiter</artifactId>
 				<version>${junit.version}</version>
 			</dependency>
+			<dependency>
+				<groupId>nl.stokpop</groupId>
+				<artifactId>event-scheduler</artifactId>
+				<version>1.0.0</version>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
@@ -122,6 +127,10 @@
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter</artifactId>
 			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>nl.stokpop</groupId>
+			<artifactId>event-scheduler</artifactId>
 		</dependency>
 	</dependencies>
 

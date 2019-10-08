@@ -17,6 +17,10 @@
  */
 package io.gatling.mojo;
 
+import nl.stokpop.eventscheduler.EventScheduler;
+import nl.stokpop.eventscheduler.EventSchedulerBuilder;
+import nl.stokpop.eventscheduler.api.*;
+import nl.stokpop.eventscheduler.exception.EventSchedulerException;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
@@ -41,6 +45,7 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.*;
 
 import static io.gatling.mojo.MojoConstants.*;
@@ -179,76 +184,88 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   private Set<File> existingDirectories;
 
   /**
-   * TargetsIO: Name of product that is being tested.
+   * EventScheduler: Enable calls to EventScheduler.
    */
-  @Parameter(property = "gatling.productName", alias = "pn", defaultValue = "ANONYMOUS_PRODUCT")
-  private String productName;
+  @Parameter(property = "gatling.eventSchedulerEnabled", defaultValue = "false")
+  private boolean eventSchedulerEnabled;
 
   /**
-   * TargetsIO: Name of performance dashboard for this test.
+   * EventScheduler: properties for custom event implementations
    */
-  @Parameter(property = "gatling.dashboardName", alias = "dn", defaultValue = "ANONYMOUS_DASHBOARD")
-  private String dashboardName;
+  @Parameter(property = "gatling.eventProperties")
+  private Map<String, Properties> eventProperties;
 
   /**
-   * TargetsIO: Test run id.
+   * EventScheduler: schedule script with events, one event per line, such as: PT1M|scale-down|replicas=2
    */
-  @Parameter(property = "gatling.testRunId", alias = "tid", defaultValue = "ANONYMOUS_TEST_ID")
-  private String testRunId;
+  @Parameter(property = "gatling.eventScheduleScript")
+  private String eventScheduleScript;
 
   /**
-   * TargetsIO: Build results url to post the results of this load test.
+   * EventScheduler: Name of application that is being tested.
    */
-  @Parameter(property = "gatling.buildResultsUrl", alias = "url", defaultValue = "http://localhost")
-  private String buildResultsUrl;
+  @Parameter(property = "gatling.application", defaultValue = "UNKNOWN_APPLICATION")
+  private String eventApplication;
 
   /**
-   * TargetsIO: Build results url to post the results of this load test.
+   * EventScheduler: Test type for this test.
    */
-  @Parameter(property = "gatling.targetsIoUrl", alias = "iourl", defaultValue = "http://localhost:8123")
-  private String targetsIoUrl;
+  @Parameter(property = "gatling.testType", defaultValue = "UNKNOWN_TEST_TYPE")
+  private String eventTestType;
 
   /**
-   * TargetsIO: the release number of the product.
+   * EventScheduler: Test environment for this test.
    */
-  @Parameter(property = "gatling.productRelease", alias = "pr", defaultValue = "1.0.0-SNAPSHOT")
-  private String productRelease;
+  @Parameter(property = "gatling.testEnvironment", defaultValue = "UNKNOWN_TEST_ENVIRONMENT")
+  private String eventTestEnvironment;
 
   /**
-   * TargetsIO: Rampup time in seconds.
+   * EventScheduler: Name of product that is being tested.
    */
-  @Parameter(property = "gatling.rampupTimeInSeconds", alias = "rt", defaultValue = "30")
-  private String rampupTimeInSeconds;
+  @Parameter(property = "gatling.productName",  defaultValue = "ANONYMOUS_PRODUCT")
+  private String eventProductName;
 
   /**
-   * TargetsIO: Parse the target.io test asserts and fail build it not ok.
+   * EventScheduler: Name of performance dashboard for this test.
    */
-  @Parameter(property = "gatling.assertResultsEnabled", alias = "ar", defaultValue = "false")
-  private boolean assertResultsEnabled;
+  @Parameter(property = "gatling.dashboardName", defaultValue = "ANONYMOUS_DASHBOARD")
+  private String eventDashboardName;
 
   /**
-   * TargetsIO: Enable calls to TargetsIO.
+   * EventScheduler: Test run id.
    */
-  @Parameter(property = "gatling.targetsIoEnabled", alias = "tie", defaultValue = "false")
-  private boolean targetsIoEnabled;
+  @Parameter(property = "gatling.testRunId",  defaultValue = "ANONYMOUS_TEST_ID")
+  private String eventTestRunId;
 
   /**
-   * RemoteSystem call: Enable call to RemoteSystem.
+   * EventScheduler: Build results url to post the results of this load test.
    */
-  @Parameter(property = "gatling.remoteSystemCallEnabled", alias = "rsce", defaultValue = "false")
-  private boolean remoteSystemCallEnabled;
+  @Parameter(property = "gatling.buildResultsUrl",  defaultValue = "http://localhost")
+  private String eventBuildResultsUrl;
 
   /**
-   * RemoteSystem call url: Provide complete URL with ${testStartTime} and ${testEndTime} placeholders
+   * EventScheduler: Build results url to post the results of this load test.
    */
-  @Parameter(property = "gatling.remoteSystemUrl", alias = "rsu")
-  private String remoteSystemUrl;
+  @Parameter(property = "gatling.eventUrl",  defaultValue = "http://localhost:8123")
+  private String eventUrl;
 
   /**
-   * RemoteSystem call headers: a comma separated name:value list
+   * EventScheduler: the release number of the product.
    */
-  @Parameter(property = "gatling.remoteSystemHeaders", alias = "rsh")
-  private String remoteSystemHeaders;
+  @Parameter(property = "gatling.productRelease",  defaultValue = "1.0.0-SNAPSHOT")
+  private String eventProductRelease;
+
+  /**
+   * EventScheduler: Rampup time in seconds.
+   */
+  @Parameter(property = "gatling.rampupTimeInSeconds",  defaultValue = "30")
+  private String eventRampupTimeInSeconds;
+
+  /**
+   * EventScheduler: Constant load time in seconds.
+   */
+  @Parameter(property = "gatling.constantLoadTimeInSeconds", defaultValue = "570")
+  private String eventConstantLoadTimeInSeconds;
 
   /**
    * Executes Gatling simulations.
@@ -258,6 +275,25 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     if (skip) {
       getLog().info("Skipping gatling-maven-plugin");
       return;
+    }
+
+    boolean abortEventScheduler = false;
+    final EventScheduler eventScheduler = eventSchedulerEnabled
+            ? createEventScheduler()
+            : null;
+
+    if (eventSchedulerEnabled && eventScheduler != null) {
+      eventScheduler.startSession();
+
+      Runnable shutdowner = () -> {
+        if (!eventScheduler.isSessionStopped()) {
+          getLog().info("Shutdown Hook: abort event scheduler session!");
+          eventScheduler.abortSession();
+        }
+      };
+      Thread eventSchedulerShutdownThread = new Thread(shutdowner, "eventSchedulerShutdownThread");
+      Runtime.getRuntime().addShutdownHook(eventSchedulerShutdownThread);
+
     }
 
     // Create results directories
@@ -284,6 +320,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
     } catch (Exception e) {
       if (failOnError) {
+        abortEventScheduler = true;
         if (e instanceof GatlingSimulationAssertionsFailedException) {
           throw new MojoFailureException(e.getMessage(), e);
         } else if (e instanceof MojoFailureException) {
@@ -298,6 +335,19 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
       }
     } finally {
       recordSimulationResults();
+      if (eventScheduler != null && abortEventScheduler) {
+        eventScheduler.abortSession();
+      }
+    }
+    if (eventScheduler != null) {
+      try {
+        eventScheduler.stopSession();
+      } catch (EventSchedulerException e) {
+        throw new MojoExecutionException("EventScheduler assertions check failed. " + e.getMessage(), e);
+      }
+//      catch (EventSchedulerAssertionsAreFalse eventSchedulerAssertionsAreFalse) {
+//        throw new MojoExecutionException("EventScheduler assertions check is false. " + eventSchedulerAssertionsAreFalse.getMessage(), eventSchedulerAssertionsAreFalse);
+//      }
     }
   }
 
@@ -589,4 +639,64 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   private boolean isConcreteClass(Class<?> clazz) {
     return !clazz.isInterface() && !Modifier.isAbstract(clazz.getModifiers());
   }
+
+  private EventScheduler createEventScheduler() {
+
+    EventSchedulerLogger logger = new EventSchedulerLogger() {
+      @Override
+      public void info(String message) {
+        getLog().info(message);
+      }
+
+      @Override
+      public void warn(String message) {
+        getLog().warn(message);
+      }
+
+      @Override
+      public void error(String message) {
+        getLog().error(message);
+      }
+
+      @Override
+      public void error(String message, Throwable throwable) {
+        getLog().error(message, throwable);
+      }
+
+      @Override
+      public void debug(final String message) {
+        getLog().debug(message);
+      }
+    };
+
+    TestContext context = new TestContextBuilder()
+            .setTestType(eventTestType)
+            .setTestEnvironment(eventTestEnvironment)
+            .setTestRunId(eventTestRunId)
+            .setCIBuildResultsUrl(eventBuildResultsUrl)
+            .setApplicationRelease(eventProductRelease)
+            .setRampupTimeInSeconds(eventRampupTimeInSeconds)
+            .setConstantLoadTimeInSeconds(eventConstantLoadTimeInSeconds)
+            .build();
+
+    EventSchedulerSettings settings = new EventSchedulerSettingsBuilder()
+            .setKeepAliveInterval(Duration.ofMinutes(2))
+            .build();
+
+    EventSchedulerBuilder builder = new EventSchedulerBuilder()
+            .setEventSchedulerSettings(settings)
+            .setTestContext(context)
+            .setAssertResultsEnabled(true)
+            .setCustomEvents(eventScheduleScript)
+            .setLogger(logger);
+
+    if (eventProperties != null) {
+      eventProperties.forEach(
+              (className, props) -> props.forEach(
+                      (name, value) -> builder.addEventProperty(className, (String) name, (String) value)));
+    }
+
+    return builder.build();
+  }
+
 }
