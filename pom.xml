@@ -8,13 +8,13 @@
 	</parent>
 
     <groupId>nl.stokpop</groupId>
-    <artifactId>gatling-maven-plugin-events</artifactId>
-    <version>3.0.4-SNAPSHOT</version>
-    <name>gatling-maven-plugin-events</name>
-    <description>Forked from gatling-maven-plugin, with added targets-io integration points.</description>
+    <artifactId>events-gatling-maven-plugin</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>events-gatling-maven-plugin</name>
+    <description>Forked from gatling-maven-plugin 3.0.3, this version has test events integration.</description>
     <packaging>maven-plugin</packaging>
 
-    <inceptionYear>2017</inceptionYear>
+    <inceptionYear>2019</inceptionYear>
     <url>http://www.stokpop.nl</url>
 
     <developers>
@@ -31,9 +31,9 @@
     </developers>
 
     <scm>
-        <connection>scm:git:git:@github.com:stokpop/gatling-maven-plugin-events.git</connection>
-        <developerConnection>scm:git:git:@github.com:stokpop/gatling-maven-plugin-events.git</developerConnection>
-        <url>https://github.com/stokpop/gatling-maven-plugin-events</url>
+        <connection>scm:git:git:@github.com:stokpop/events-gatling-maven-plugin.git</connection>
+        <developerConnection>scm:git:git:@github.com:stokpop/events-gatling-maven-plugin.git</developerConnection>
+        <url>https://github.com/stokpop/events-gatling-maven-plugin</url>
         <tag>HEAD</tag>
     </scm>
 
