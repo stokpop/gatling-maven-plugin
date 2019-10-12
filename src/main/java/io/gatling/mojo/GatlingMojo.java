@@ -340,15 +340,9 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
       }
     }
     if (eventScheduler != null) {
-      try {
         eventScheduler.stopSession();
-      } catch (EventSchedulerException e) {
-        throw new MojoExecutionException("EventScheduler assertions check failed. " + e.getMessage(), e);
-      }
-//      catch (EventSchedulerAssertionsAreFalse eventSchedulerAssertionsAreFalse) {
-//        throw new MojoExecutionException("EventScheduler assertions check is false. " + eventSchedulerAssertionsAreFalse.getMessage(), eventSchedulerAssertionsAreFalse);
-//      }
     }
+    // TODO: check if results of test run are ok and fail or succeed this maven run
   }
 
   private Set<File> directoriesInResultsFolder() {
