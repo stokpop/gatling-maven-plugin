@@ -20,7 +20,7 @@ package io.gatling.mojo;
 import nl.stokpop.eventscheduler.EventScheduler;
 import nl.stokpop.eventscheduler.EventSchedulerBuilder;
 import nl.stokpop.eventscheduler.api.*;
-import nl.stokpop.eventscheduler.exception.EventSchedulerException;
+import nl.stokpop.eventscheduler.exception.EventCheckFailureException;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
@@ -341,8 +341,18 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     }
     if (eventScheduler != null) {
         eventScheduler.stopSession();
+      try {
+        eventScheduler.checkResults();
+      } catch (EventCheckFailureException e) {
+        if (!continueOnAssertionFailure) {
+          throw  e;
+        }
+        else {
+          getLog().warn("EventCheck failures found, but continue on assert failure is enabled:" + e.getMessage());
+        }
+      }
+
     }
-    // TODO: check if results of test run are ok and fail or succeed this maven run
   }
 
   private Set<File> directoriesInResultsFolder() {
@@ -636,7 +646,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
   private EventScheduler createEventScheduler() {
 
-    EventSchedulerLogger logger = new EventSchedulerLogger() {
+    EventLogger logger = new EventLogger() {
       @Override
       public void info(String message) {
         getLog().info(message);
@@ -677,7 +687,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
             .setKeepAliveInterval(Duration.ofMinutes(2))
             .build();
 
-    EventSchedulerBuilder builder = new EventSchedulerBuilder()
+    EventSchedulerBuilder eventSchedulerBuilder = new EventSchedulerBuilder()
             .setEventSchedulerSettings(settings)
             .setTestContext(context)
             .setAssertResultsEnabled(true)
@@ -685,12 +695,10 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
             .setLogger(logger);
 
     if (eventProperties != null) {
-      eventProperties.forEach(
-              (className, props) -> props.forEach(
-                      (name, value) -> builder.addEventProperty(className, (String) name, (String) value)));
+      eventProperties.forEach(eventSchedulerBuilder::addEvent);
     }
 
-    return builder.build();
+    return eventSchedulerBuilder.build();
   }
 
 }
