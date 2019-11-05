@@ -268,6 +268,24 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   private String eventConstantLoadTimeInSeconds;
 
   /**
+   * EventScheduler: test run annotations passed via environment variable
+   */
+  @Parameter(property = "gatling.annotations", alias = "ann")
+  private String eventAnnotations;
+
+  /**
+   * EventScheduler: test run variables passed via environment variable
+   */
+  @Parameter(property = "gatling.variables")
+  private Properties eventVariables;
+
+  /**
+   * EventScheduler: test run comma separated tags via environment variable
+   */
+  @Parameter(property = "gatling.tags")
+  private String eventTags;
+
+  /**
    * Executes Gatling simulations.
    */
   @Override
@@ -673,14 +691,18 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
       }
     };
 
-    TestContext context = new TestContextBuilder()
+    TestContext testContext = new TestContextBuilder()
+            .setTestRunId(eventTestRunId)
+            .setApplication(eventApplication)
+            .setApplicationRelease(eventProductRelease)
             .setTestType(eventTestType)
             .setTestEnvironment(eventTestEnvironment)
-            .setTestRunId(eventTestRunId)
             .setCIBuildResultsUrl(eventBuildResultsUrl)
-            .setApplicationRelease(eventProductRelease)
             .setRampupTimeInSeconds(eventRampupTimeInSeconds)
             .setConstantLoadTimeInSeconds(eventConstantLoadTimeInSeconds)
+            .setAnnotations(eventAnnotations)
+            .setTags(eventTags)
+            .setVariables(eventVariables)
             .build();
 
     EventSchedulerSettings settings = new EventSchedulerSettingsBuilder()
@@ -689,7 +711,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
     EventSchedulerBuilder eventSchedulerBuilder = new EventSchedulerBuilder()
             .setEventSchedulerSettings(settings)
-            .setTestContext(context)
+            .setTestContext(testContext)
             .setAssertResultsEnabled(true)
             .setCustomEvents(eventScheduleScript)
             .setLogger(logger);
