@@ -1,14 +1,13 @@
-Targets.io maven plugin 
-===============================
+events gatling maven plugin 
+===========================
 
-This is a fork of the gatling-maven-plugin. 
+This is build on a fork of the gatling-maven-plugin. 
 * https://github.com/gatling/gatling-maven-plugin
 
-It adds integration points to targets.io performance test dashboard.
-* https://github.com/dmoll1974/targets-io
+It adds events during a gatling performance test.
+* https://github.com/stokpop/event-scheduler
 
 Code additions have been indicated in the changed java files. 
-Also, a patch file is included with the changes.
 
 Gatling
 =======
