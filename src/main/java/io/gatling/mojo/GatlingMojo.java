@@ -19,11 +19,7 @@ package io.gatling.mojo;
 
 import nl.stokpop.eventscheduler.EventScheduler;
 import nl.stokpop.eventscheduler.EventSchedulerBuilder;
-import nl.stokpop.eventscheduler.api.EventLogger;
-import nl.stokpop.eventscheduler.api.EventSchedulerSettings;
-import nl.stokpop.eventscheduler.api.EventSchedulerSettingsBuilder;
-import nl.stokpop.eventscheduler.api.TestContext;
-import nl.stokpop.eventscheduler.api.TestContextBuilder;
+import nl.stokpop.eventscheduler.api.*;
 import nl.stokpop.eventscheduler.exception.EventCheckFailureException;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
@@ -50,19 +46,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
 
-import static io.gatling.mojo.MojoConstants.COMPILER_JVM_ARGS;
-import static io.gatling.mojo.MojoConstants.COMPILER_MAIN_CLASS;
-import static io.gatling.mojo.MojoConstants.GATLING_JVM_ARGS;
-import static io.gatling.mojo.MojoConstants.GATLING_MAIN_CLASS;
+import static io.gatling.mojo.MojoConstants.*;
 import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
@@ -294,11 +280,17 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   private String eventTags;
 
   /**
-   * EventDebugEnabled: enable debug logging for events. Note: maven -X debug should
+   * EventScheduler: enable debug logging for events. Note: maven -X debug should
    * also be active.
    */
   @Parameter(property = "gatling.eventDebugEnabled")
   private boolean eventDebugEnabled;
+
+  /**
+   * EventScheduler: how often is keep alive event fired. Default is 30 seconds.
+   */
+  @Parameter(property = "gatling.eventKeepAliveIntervalInSeconds", defaultValue = "30")
+  private Integer eventKeepAliveIntervalInSeconds;
 
   /**
    * Executes Gatling simulations.
@@ -739,7 +731,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
             .build();
 
     EventSchedulerSettings settings = new EventSchedulerSettingsBuilder()
-            .setKeepAliveInterval(Duration.ofMinutes(2))
+            .setKeepAliveInterval(Duration.ofSeconds(eventKeepAliveIntervalInSeconds))
             .build();
 
     EventSchedulerBuilder eventSchedulerBuilder = new EventSchedulerBuilder()
