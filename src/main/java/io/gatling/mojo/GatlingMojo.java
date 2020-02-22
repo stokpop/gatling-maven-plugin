@@ -60,6 +60,8 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
   requiresDependencyResolution = ResolutionScope.TEST)
 public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
+  private EventScheduler eventScheduler;
+
   /**
    * A name of a Simulation class to run.
    */
@@ -304,33 +306,9 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
     boolean abortEventScheduler = false;
 
-    final EventScheduler eventScheduler = eventSchedulerEnabled
+    eventScheduler = eventSchedulerEnabled
             ? createEventScheduler()
             : null;
-
-    if (eventSchedulerEnabled) {
-        eventScheduler.startSession();
-
-        final Thread main = Thread.currentThread();
-        Runnable shutdowner = () -> {
-            if (!eventScheduler.isSessionStopped()) {
-                getLog().info("Shutdown Hook: abort event scheduler session!");
-                eventScheduler.abortSession();
-            }
-
-            // try to hold on to main thread to let the abort event tasks finish properly
-            try {
-                main.join(4000);
-            } catch (InterruptedException e) {
-                getLog().warn("Interrupt while waiting for abort to finish.");
-            }
-        };
-        Thread eventSchedulerShutdownThread = new Thread(shutdowner, "eventSchedulerShutdownThread");
-        Runtime.getRuntime().addShutdownHook(eventSchedulerShutdownThread);
-    }
-    else {
-        getLog().warn("The Event Scheduler is disabled. Use 'eventSchedulerEnabled' property to enable.");
-    }
 
     // Create results directories
     resultsFolder.mkdirs();
@@ -392,6 +370,35 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     }
   }
 
+  private void startScheduler(KillSwitchCallback killSwitchCallback) {
+    if (eventSchedulerEnabled) {
+
+      eventScheduler.addKillSwitch(killSwitchCallback);
+
+        eventScheduler.startSession();
+
+        final Thread main = Thread.currentThread();
+        Runnable shutdowner = () -> {
+            if (!eventScheduler.isSessionStopped()) {
+                getLog().info("Shutdown Hook: abort event scheduler session!");
+                eventScheduler.abortSession();
+            }
+
+            // try to hold on to main thread to let the abort event tasks finish properly
+            try {
+                main.join(4000);
+            } catch (InterruptedException e) {
+                getLog().warn("Interrupt while waiting for abort to finish.");
+            }
+        };
+        Thread eventSchedulerShutdownThread = new Thread(shutdowner, "eventSchedulerShutdownThread");
+        Runtime.getRuntime().addShutdownHook(eventSchedulerShutdownThread);
+    }
+    else {
+        getLog().warn("The Event Scheduler is disabled. Use 'eventSchedulerEnabled' property to enable.");
+    }
+  }
+
   private Set<File> directoriesInResultsFolder() {
     File[] directories = resultsFolder.listFiles(File::isDirectory);
     return (directories == null)
@@ -442,6 +449,10 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
   private void executeGatling(List<String> gatlingJvmArgs, List<String> gatlingArgs, List<String> testClasspath, Toolchain toolchain) throws Exception {
     Fork forkedGatling = new Fork(GATLING_MAIN_CLASS, testClasspath, gatlingJvmArgs, gatlingArgs, toolchain, propagateSystemProperties, getLog());
+
+    KillSwitchCallback killSwitchCallback = forkedGatling.getKillSwitchCallback();
+    startScheduler(killSwitchCallback);
+
     try {
       forkedGatling.run();
     } catch (ExecuteException e) {

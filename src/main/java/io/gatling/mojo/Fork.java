@@ -15,22 +15,19 @@
  */
 package io.gatling.mojo;
 
+import nl.stokpop.eventscheduler.api.KillSwitchCallback;
+import org.apache.commons.exec.*;
+import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.logging.Log;
+import org.apache.maven.toolchain.Toolchain;
+import org.codehaus.plexus.util.StringUtils;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
-
-import org.apache.commons.exec.CommandLine;
-import org.apache.commons.exec.DefaultExecutor;
-import org.apache.commons.exec.Executor;
-import org.apache.commons.exec.PumpStreamHandler;
-import org.apache.commons.exec.ShutdownHookProcessDestroyer;
-import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugin.logging.Log;
-import org.apache.maven.toolchain.Toolchain;
-import org.codehaus.plexus.util.StringUtils;
 
 class Fork {
 
@@ -42,6 +39,9 @@ class Fork {
   private final List<String> classpath;
   private final boolean propagateSystemProperties;
   private final Log log;
+
+  private final ExecuteWatchdog killSwitchWatchdog = new ExecuteWatchdog(ExecuteWatchdog.INFINITE_TIMEOUT);
+  private final KillSwitchCallback killSwitchCallback = killSwitchWatchdog::destroyProcess;
 
   private final List<String> jvmArgs = new ArrayList<>();
   private final List<String> args = new ArrayList<>();
@@ -61,6 +61,10 @@ class Fork {
     this.javaExecutable = safe(toWindowsShortName(findJavaExecutable(toolchain)));
     this.propagateSystemProperties = propagateSystemProperties;
     this.log = log;
+  }
+
+  KillSwitchCallback getKillSwitchCallback() {
+    return killSwitchCallback;
   }
 
   private String toWindowsShortName(String value) {
@@ -133,7 +137,9 @@ class Fork {
       log.debug(cl.toString());
     }
 
+    exec.setWatchdog(killSwitchWatchdog);
     int exitValue = exec.execute(cl);
+
     if (exitValue != 0) {
       throw new MojoFailureException("command line returned non-zero value:" + exitValue);
     }
