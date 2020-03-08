@@ -21,6 +21,7 @@ import nl.stokpop.eventscheduler.EventScheduler;
 import nl.stokpop.eventscheduler.EventSchedulerBuilder;
 import nl.stokpop.eventscheduler.api.*;
 import nl.stokpop.eventscheduler.exception.EventCheckFailureException;
+import nl.stokpop.eventscheduler.exception.KillSwitchException;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
@@ -333,32 +334,40 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
       }
 
     } catch (Exception e) {
-      if (failOnError) {
-        abortEventScheduler = true;
-        if (e instanceof GatlingSimulationAssertionsFailedException) {
-          throw new MojoFailureException(e.getMessage(), e);
-        } else if (e instanceof MojoFailureException) {
-          throw (MojoFailureException) e;
-        } else if (e instanceof MojoExecutionException) {
-          throw (MojoExecutionException) e;
+      getLog().debug(">>> Inside catch exception: " + e);
+      if (!(e instanceof KillSwitchException)) {
+        if (failOnError) {
+          getLog().debug(">>> Fail on error");
+          abortEventScheduler = true;
+          if (e instanceof GatlingSimulationAssertionsFailedException) {
+            throw new MojoFailureException(e.getMessage(), e);
+          } else if (e instanceof MojoFailureException) {
+            throw (MojoFailureException) e;
+          } else if (e instanceof MojoExecutionException) {
+            throw (MojoExecutionException) e;
+          } else {
+            throw new MojoExecutionException("Gatling failed.", e);
+          }
         } else {
-          throw new MojoExecutionException("Gatling failed.", e);
+          getLog().warn("There were some errors while running your simulation, but failOnError was set to false won't fail your build.");
         }
-      } else {
-        getLog().warn("There were some errors while running your simulation, but failOnError was set to false won't fail your build.");
       }
     } finally {
       recordSimulationResults();
       if (eventScheduler != null && abortEventScheduler) {
+        getLog().debug(">>> Abort in finally");
         eventScheduler.abortSession();
       }
     }
-    
+
     if (eventScheduler != null && !eventScheduler.isSessionStopped()) {
-        eventScheduler.stopSession();
+      getLog().debug(">>> Stop session (because not isSessionStopped())");
+      eventScheduler.stopSession();
       try {
+        getLog().debug(">>> Call check results");
         eventScheduler.checkResults();
       } catch (EventCheckFailureException e) {
+        getLog().debug(">>> EventCheckFailureException: " + e.getMessage());
         if (!continueOnAssertionFailure) {
           throw  e;
         }
@@ -370,33 +379,29 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     }
   }
 
-  private void startScheduler(KillSwitchCallback killSwitchCallback) {
-    if (eventSchedulerEnabled) {
-
+  private void startScheduler(EventScheduler eventScheduler, KillSwitchHandler killSwitchCallback) {
       eventScheduler.addKillSwitch(killSwitchCallback);
+      eventScheduler.startSession();
+      addShutdownHookForEventScheduler(eventScheduler);
+  }
 
-        eventScheduler.startSession();
+  private void addShutdownHookForEventScheduler(EventScheduler eventScheduler) {
+    final Thread main = Thread.currentThread();
+    Runnable shutdowner = () -> {
+        if (!eventScheduler.isSessionStopped()) {
+          getLog().info("Shutdown Hook: abort event scheduler session!");
+          eventScheduler.abortSession();
+        }
 
-        final Thread main = Thread.currentThread();
-        Runnable shutdowner = () -> {
-            if (!eventScheduler.isSessionStopped()) {
-                getLog().info("Shutdown Hook: abort event scheduler session!");
-                eventScheduler.abortSession();
-            }
-
-            // try to hold on to main thread to let the abort event tasks finish properly
-            try {
-                main.join(4000);
-            } catch (InterruptedException e) {
-                getLog().warn("Interrupt while waiting for abort to finish.");
-            }
-        };
-        Thread eventSchedulerShutdownThread = new Thread(shutdowner, "eventSchedulerShutdownThread");
-        Runtime.getRuntime().addShutdownHook(eventSchedulerShutdownThread);
-    }
-    else {
-        getLog().warn("The Event Scheduler is disabled. Use 'eventSchedulerEnabled' property to enable.");
-    }
+        // try to hold on to main thread to let the abort event tasks finish properly
+        try {
+            main.join(4000);
+        } catch (InterruptedException e) {
+            getLog().warn("Interrupt while waiting for abort to finish.");
+        }
+    };
+    Thread eventSchedulerShutdownThread = new Thread(shutdowner, "eventSchedulerShutdownThread");
+    Runtime.getRuntime().addShutdownHook(eventSchedulerShutdownThread);
   }
 
   private Set<File> directoriesInResultsFolder() {
@@ -429,7 +434,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     }
 
     if (exc != null) {
-      getLog().warn("There were some errors while running your simulation, but continueOnAssertionFailure was set to true, so your simulations continue to perform.");
+      getLog().warn("There were some errors while running your simulation, but continueOnAssertionFailure was set to true, so your simulations continue to prform.");
       throw exc;
     }
   }
@@ -450,8 +455,13 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   private void executeGatling(List<String> gatlingJvmArgs, List<String> gatlingArgs, List<String> testClasspath, Toolchain toolchain) throws Exception {
     Fork forkedGatling = new Fork(GATLING_MAIN_CLASS, testClasspath, gatlingJvmArgs, gatlingArgs, toolchain, propagateSystemProperties, getLog());
 
-    KillSwitchCallback killSwitchCallback = forkedGatling.getKillSwitchCallback();
-    startScheduler(killSwitchCallback);
+    if (eventSchedulerEnabled) {
+      KillSwitchHandler killSwitchHandler = forkedGatling.getKillSwitchHandler();
+      startScheduler(eventScheduler, killSwitchHandler);
+    }
+    else {
+      getLog().warn("The Event Scheduler is disabled. Use 'eventSchedulerEnabled' property to enable.");
+    }
 
     try {
       forkedGatling.run();
@@ -748,7 +758,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     EventSchedulerBuilder eventSchedulerBuilder = new EventSchedulerBuilder()
             .setEventSchedulerSettings(settings)
             .setTestContext(testContext)
-            .setAssertResultsEnabled(true)
+            .setAssertResultsEnabled(eventSchedulerEnabled)
             .setCustomEvents(eventScheduleScript)
             .setLogger(logger);
 

@@ -15,7 +15,8 @@
  */
 package io.gatling.mojo;
 
-import nl.stokpop.eventscheduler.api.KillSwitchCallback;
+import nl.stokpop.eventscheduler.api.KillSwitchHandler;
+import nl.stokpop.eventscheduler.exception.KillSwitchException;
 import org.apache.commons.exec.*;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
@@ -40,8 +41,19 @@ class Fork {
   private final boolean propagateSystemProperties;
   private final Log log;
 
-  private final ExecuteWatchdog killSwitchWatchdog = new ExecuteWatchdog(ExecuteWatchdog.INFINITE_TIMEOUT);
-  private final KillSwitchCallback killSwitchCallback = killSwitchWatchdog::destroyProcess;
+  private boolean isKillSwitchCalled = false;
+
+  private final ExecuteWatchdog killSwitchWatchdog =
+      new ExecuteWatchdog(ExecuteWatchdog.INFINITE_TIMEOUT);
+
+  private final KillSwitchHandler killSwitchHandler = new KillSwitchHandler() {
+    @Override
+    public void kill(String message) {
+      log.info("Killing running process, message: " + message);
+      isKillSwitchCalled = true;
+      killSwitchWatchdog.destroyProcess();
+    }
+  };
 
   private final List<String> jvmArgs = new ArrayList<>();
   private final List<String> args = new ArrayList<>();
@@ -63,8 +75,8 @@ class Fork {
     this.log = log;
   }
 
-  KillSwitchCallback getKillSwitchCallback() {
-    return killSwitchCallback;
+  KillSwitchHandler getKillSwitchHandler() {
+    return killSwitchHandler;
   }
 
   private String toWindowsShortName(String value) {
@@ -138,7 +150,14 @@ class Fork {
     }
 
     exec.setWatchdog(killSwitchWatchdog);
-    int exitValue = exec.execute(cl);
+    int exitValue = 0;
+    try {
+      exitValue = exec.execute(cl);
+    } catch (Exception e) {
+      if (isKillSwitchCalled) {
+        throw new KillSwitchException("KillSwitch killed the process! " + e.getMessage());
+      }
+    }
 
     if (exitValue != 0) {
       throw new MojoFailureException("command line returned non-zero value:" + exitValue);
