@@ -15,8 +15,10 @@
  */
 package io.gatling.mojo;
 
-import nl.stokpop.eventscheduler.api.KillSwitchHandler;
-import nl.stokpop.eventscheduler.exception.KillSwitchException;
+import nl.stokpop.eventscheduler.api.SchedulerExceptionHandler;
+import nl.stokpop.eventscheduler.api.SchedulerExceptionType;
+import nl.stokpop.eventscheduler.exception.handler.AbortSchedulerException;
+import nl.stokpop.eventscheduler.exception.handler.KillSwitchException;
 import org.apache.commons.exec.*;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
@@ -41,17 +43,23 @@ class Fork {
   private final boolean propagateSystemProperties;
   private final Log log;
 
-  private boolean isKillSwitchCalled = false;
+  private SchedulerExceptionType schedulerExceptionType = SchedulerExceptionType.NONE;
 
-  private final ExecuteWatchdog killSwitchWatchdog =
+  private final ExecuteWatchdog gatlingProcessWatchDog =
       new ExecuteWatchdog(ExecuteWatchdog.INFINITE_TIMEOUT);
 
-  private final KillSwitchHandler killSwitchHandler = new KillSwitchHandler() {
+  private final SchedulerExceptionHandler schedulerExceptionHandler = new SchedulerExceptionHandler() {
     @Override
     public void kill(String message) {
       log.info("Killing running process, message: " + message);
-      isKillSwitchCalled = true;
-      killSwitchWatchdog.destroyProcess();
+      schedulerExceptionType = SchedulerExceptionType.KILL;
+      gatlingProcessWatchDog.destroyProcess();
+    }
+    @Override
+    public void abort(String message) {
+      log.info("Killing running process, message: " + message);
+      schedulerExceptionType = SchedulerExceptionType.ABORT;
+      gatlingProcessWatchDog.destroyProcess();
     }
   };
 
@@ -75,8 +83,8 @@ class Fork {
     this.log = log;
   }
 
-  KillSwitchHandler getKillSwitchHandler() {
-    return killSwitchHandler;
+  SchedulerExceptionHandler getSchedulerExceptionHandler() {
+    return schedulerExceptionHandler;
   }
 
   private String toWindowsShortName(String value) {
@@ -149,13 +157,16 @@ class Fork {
       log.debug(cl.toString());
     }
 
-    exec.setWatchdog(killSwitchWatchdog);
+    exec.setWatchdog(gatlingProcessWatchDog);
     int exitValue = 0;
     try {
       exitValue = exec.execute(cl);
     } catch (Exception e) {
-      if (isKillSwitchCalled) {
+      if (schedulerExceptionType == SchedulerExceptionType.KILL) {
         throw new KillSwitchException("KillSwitch killed the process! " + e.getMessage());
+      }
+      else if (schedulerExceptionType == SchedulerExceptionType.ABORT) {
+        throw new AbortSchedulerException("AbortScheduler stopped the process! " + e.getMessage());
       }
     }
 

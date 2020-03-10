@@ -21,7 +21,7 @@ import nl.stokpop.eventscheduler.EventScheduler;
 import nl.stokpop.eventscheduler.EventSchedulerBuilder;
 import nl.stokpop.eventscheduler.api.*;
 import nl.stokpop.eventscheduler.exception.EventCheckFailureException;
-import nl.stokpop.eventscheduler.exception.KillSwitchException;
+import nl.stokpop.eventscheduler.exception.handler.KillSwitchException;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
@@ -335,6 +335,8 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
     } catch (Exception e) {
       getLog().debug(">>> Inside catch exception: " + e);
+      // AbortSchedulerException should just fall through and be handled like other exceptions
+      // For KillSwitchException, got on with check results and assertions instead
       if (!(e instanceof KillSwitchException)) {
         if (failOnError) {
           getLog().debug(">>> Fail on error");
@@ -379,8 +381,8 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     }
   }
 
-  private void startScheduler(EventScheduler eventScheduler, KillSwitchHandler killSwitchCallback) {
-      eventScheduler.addKillSwitch(killSwitchCallback);
+  private void startScheduler(EventScheduler eventScheduler, SchedulerExceptionHandler schedulerExceptionHandler) {
+      eventScheduler.addKillSwitch(schedulerExceptionHandler);
       eventScheduler.startSession();
       addShutdownHookForEventScheduler(eventScheduler);
   }
@@ -456,8 +458,8 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     Fork forkedGatling = new Fork(GATLING_MAIN_CLASS, testClasspath, gatlingJvmArgs, gatlingArgs, toolchain, propagateSystemProperties, getLog());
 
     if (eventSchedulerEnabled) {
-      KillSwitchHandler killSwitchHandler = forkedGatling.getKillSwitchHandler();
-      startScheduler(eventScheduler, killSwitchHandler);
+      SchedulerExceptionHandler exceptionHandler = forkedGatling.getSchedulerExceptionHandler();
+      startScheduler(eventScheduler, exceptionHandler);
     }
     else {
       getLog().warn("The Event Scheduler is disabled. Use 'eventSchedulerEnabled' property to enable.");
