@@ -9,7 +9,7 @@
 
     <groupId>nl.stokpop</groupId>
     <artifactId>events-gatling-maven-plugin</artifactId>
-    <version>3.0.3-events-6</version>
+    <version>3.0.3-events-7-SNAPSHOT</version>
     <name>events-gatling-maven-plugin</name>
     <description>Forked from gatling-maven-plugin 3.0.3, this version has test events integration.</description>
     <packaging>maven-plugin</packaging>
