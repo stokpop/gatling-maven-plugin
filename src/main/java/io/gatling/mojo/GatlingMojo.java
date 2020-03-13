@@ -280,7 +280,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
    * EventScheduler: test run comma separated tags via environment variable
    */
   @Parameter(property = "gatling.eventTags")
-  private String eventTags;
+  private List<String> eventTags;
 
   /**
    * EventScheduler: enable debug logging for events. Note: maven -X debug should
