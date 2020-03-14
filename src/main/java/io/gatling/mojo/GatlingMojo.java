@@ -48,6 +48,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static io.gatling.mojo.MojoConstants.*;
 import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
@@ -739,6 +740,9 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
     };
 
+    // there might be null values for empty <tag></tag>
+    List<String> filteredEventTags = eventTags.stream().filter(Objects::nonNull).collect(Collectors.toList());
+
     TestContext testContext = new TestContextBuilder()
             .setTestRunId(eventTestRunId)
             .setSystemUnderTest(eventSystemUnderTest)
@@ -749,7 +753,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
             .setRampupTimeInSeconds(eventRampupTimeInSeconds)
             .setConstantLoadTimeInSeconds(eventConstantLoadTimeInSeconds)
             .setAnnotations(eventAnnotations)
-            .setTags(eventTags)
+            .setTags(filteredEventTags)
             .setVariables(eventVariables)
             .build();
 
