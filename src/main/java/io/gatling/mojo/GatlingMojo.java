@@ -220,8 +220,8 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   /**
    * EventScheduler: environment for this test.
    */
-  @Parameter(property = "gatling.eventEnvironment", defaultValue = "UNKNOWN_ENVIRONMENT")
-  private String eventEnvironment;
+  @Parameter(property = "gatling.eventTestEnvironment", defaultValue = "UNKNOWN_TEST_ENVIRONMENT")
+  private String eventTestEnvironment;
 
   /**
    * EventScheduler: name of product that is being tested.
@@ -337,7 +337,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     } catch (Exception e) {
       getLog().debug(">>> Inside catch exception: " + e);
       // AbortSchedulerException should just fall through and be handled like other exceptions
-      // For KillSwitchException, got on with check results and assertions instead
+      // For KillSwitchException, go on with check results and assertions instead
       if (!(e instanceof KillSwitchException)) {
         if (failOnError) {
           getLog().debug(">>> Fail on error");
@@ -360,6 +360,9 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
       if (eventScheduler != null && abortEventScheduler) {
         getLog().debug(">>> Abort in finally");
         eventScheduler.abortSession();
+      }
+      else {
+        getLog().debug(">>> No abort called because abortEventScheduler is false");
       }
     }
 
@@ -748,7 +751,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
             .setSystemUnderTest(eventSystemUnderTest)
             .setVersion(eventVersion)
             .setWorkload(eventWorkload)
-            .setEnvironment(eventEnvironment)
+            .setTestEnvironment(eventTestEnvironment)
             .setCIBuildResultsUrl(eventBuildResultsUrl)
             .setRampupTimeInSeconds(eventRampupTimeInSeconds)
             .setConstantLoadTimeInSeconds(eventConstantLoadTimeInSeconds)
