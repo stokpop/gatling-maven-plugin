@@ -9,33 +9,37 @@
 
     <groupId>nl.stokpop</groupId>
     <artifactId>events-gatling-maven-plugin</artifactId>
-    <version>3.0.3-events-8-SNAPSHOT</version>
+    <version>3.1.0-events-1-SNAPSHOT</version>
     <name>events-gatling-maven-plugin</name>
-    <description>Forked from gatling-maven-plugin 3.0.3, this version has test events integration.</description>
+    <description>Forked from gatling-maven-plugin 3.1.0, this version has test events integration.</description>
     <packaging>maven-plugin</packaging>
 
-    <inceptionYear>2019</inceptionYear>
-    <url>http://www.stokpop.nl</url>
+	<inceptionYear>2011</inceptionYear>
+	<url>http://gatling.io</url>
 
-    <developers>
-        <developer>
-            <id>slandelle@gatling.io</id>
-            <name>Stephane Landelle</name>
-            <organization>Gatling Corp</organization>
+	<!--    events-gatling-maven-plugin: -->
+	<!--    <inceptionYear>2019</inceptionYear> -->
+	<!--    <url>http://www.stokpop.nl</url> -->
+
+	<developers>
+		<developer>
+			<id>slandelle@gatling.io</id>
+			<name>Stephane Landelle</name>
+			<organization>Gatling Corp</organization>
         </developer>
         <developer>
             <id>peter.paul.bakker@stokpop.nl</id>
             <name>Peter Paul Bakker</name>
             <organization>Stokpop Software Solutions</organization>
-        </developer>
-    </developers>
+		</developer>
+	</developers>
 
-    <scm>
+	<scm>
         <connection>scm:git:git:@github.com:stokpop/events-gatling-maven-plugin.git</connection>
         <developerConnection>scm:git:git:@github.com:stokpop/events-gatling-maven-plugin.git</developerConnection>
         <url>https://github.com/stokpop/events-gatling-maven-plugin</url>
-        <tag>HEAD</tag>
-    </scm>
+		<tag>HEAD</tag>
+	</scm>
 
 	<licenses>
 		<license>
@@ -191,28 +195,32 @@
 			</plugins>
 		</pluginManagement>
 
-        <plugins>
-            <plugin>
-                <artifactId>maven-plugin-plugin</artifactId>
-                <version>3.4</version>
-                <configuration>
-                    <skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>mojo-descriptor</id>
-                        <goals>
-                            <goal>descriptor</goal>
-                        </goals>
-                    </execution>
-                    <execution>
-                        <id>help-goal</id>
-                        <goals>
-                            <goal>helpmojo</goal>
-                        </goals>
-                    </execution>
-                </executions>
+		<plugins>
+			<plugin>
+				<artifactId>maven-plugin-plugin</artifactId>
+				<version>${maven-plugin-plugin.version}</version>
+				<configuration>
+					<skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
+				</configuration>
+				<executions>
+					<execution>
+						<id>mojo-descriptor</id>
+						<goals>
+							<goal>descriptor</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>help-goal</id>
+						<goals>
+							<goal>helpmojo</goal>
+						</goals>
+					</execution>
+				</executions>
             </plugin>
+			<plugin>
+				<groupId>com.mycila.maven-license-plugin</groupId>
+				<artifactId>maven-license-plugin</artifactId>
+			</plugin>
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nexus-staging-maven-plugin</artifactId>

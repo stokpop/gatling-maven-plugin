@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * This file has been changed in the fork: gatling-maven-plugin-events
+ * This file has been changed in the fork: events-gatling-maven-plugin
  */
 package io.gatling.mojo;
 
@@ -25,6 +25,8 @@ import nl.stokpop.eventscheduler.exception.handler.KillSwitchException;
 import org.apache.commons.exec.ExecuteException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
+import org.apache.maven.artifact.resolver.ArtifactResolutionRequest;
+import org.apache.maven.artifact.resolver.ArtifactResolutionResult;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -33,6 +35,7 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.toolchain.Toolchain;
 import org.codehaus.plexus.util.DirectoryScanner;
+import org.codehaus.plexus.util.ExceptionUtils;
 import org.codehaus.plexus.util.SelectorUtils;
 import org.codehaus.plexus.util.StringUtils;
 
@@ -53,6 +56,8 @@ import java.util.stream.Collectors;
 import static io.gatling.mojo.MojoConstants.*;
 import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import static java.util.Arrays.stream;
+import static org.codehaus.plexus.util.StringUtils.isBlank;
 
 /**
  * Mojo to execute Gatling.
@@ -185,6 +190,12 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   @Parameter(defaultValue = "${plugin.artifacts}", readonly = true)
   private List<Artifact> artifacts;
 
+  /**
+   * Specify a different working directory.
+   */
+  @Parameter(property = "gatling.workingDirectory")
+  private File workingDirectory;
+
   private Set<File> existingDirectories;
 
   /**
@@ -313,8 +324,11 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
             : null;
 
     // Create results directories
-    resultsFolder.mkdirs();
+    if (!resultsFolder.exists() && !resultsFolder.mkdirs()) {
+      throw new MojoExecutionException("Could not create resultsFolder " + resultsFolder.getAbsolutePath());
+    }
     existingDirectories = directoriesInResultsFolder();
+    Exception ex = null;
 
     try {
       List<String> testClasspath = buildTestClasspath();
@@ -354,9 +368,10 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
         } else {
           getLog().warn("There were some errors while running your simulation, but failOnError was set to false won't fail your build.");
         }
+      ex = e instanceof GatlingSimulationAssertionsFailedException ? null : e;
       }
     } finally {
-      recordSimulationResults();
+      recordSimulationResults(ex);
       if (eventScheduler != null && abortEventScheduler) {
         getLog().debug(">>> Abort in finally");
         eventScheduler.abortSession();
@@ -440,7 +455,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     }
 
     if (exc != null) {
-      getLog().warn("There were some errors while running your simulation, but continueOnAssertionFailure was set to true, so your simulations continue to prform.");
+      getLog().warn("There were some errors while running your simulation, but continueOnAssertionFailure was set to true, so your simulations continue to perform.");
       throw exc;
     }
   }
@@ -459,7 +474,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   }
 
   private void executeGatling(List<String> gatlingJvmArgs, List<String> gatlingArgs, List<String> testClasspath, Toolchain toolchain) throws Exception {
-    Fork forkedGatling = new Fork(GATLING_MAIN_CLASS, testClasspath, gatlingJvmArgs, gatlingArgs, toolchain, propagateSystemProperties, getLog());
+    Fork forkedGatling = new Fork(GATLING_MAIN_CLASS, testClasspath, gatlingJvmArgs, gatlingArgs, toolchain, propagateSystemProperties, getLog(), workingDirectory);
 
     if (eventSchedulerEnabled) {
       SchedulerExceptionHandler exceptionHandler = forkedGatling.getSchedulerExceptionHandler();
@@ -479,25 +494,46 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     }
   }
 
-  private void recordSimulationResults() throws MojoExecutionException {
+  private void recordSimulationResults(Exception exception) throws MojoExecutionException {
     try {
-      saveListOfNewRunDirectories();
+      saveSimulationResultToFile(exception);
       copyJUnitReports();
     } catch (IOException e) {
       throw new MojoExecutionException("Could not record simulation results.", e);
     }
   }
 
-  private void saveListOfNewRunDirectories() throws IOException {
+  private void saveSimulationResultToFile(Exception exception) throws IOException {
     Path resultsFile = resultsFolder.toPath().resolve(LAST_RUN_FILE);
 
     try (BufferedWriter writer = Files.newBufferedWriter(resultsFile)) {
+      saveListOfNewRunDirectories(writer);
+      writeExceptionIfExists(writer, exception);
+    }
+  }
+
+  private void saveListOfNewRunDirectories(BufferedWriter writer) throws IOException {
       for (File directory : directoriesInResultsFolder()) {
         if (isNewDirectory(directory)) {
           writer.write(directory.getName() + System.lineSeparator());
         }
       }
+  }
+
+  private void writeExceptionIfExists(BufferedWriter writer, Exception exception) throws IOException {
+    if (exception != null) {
+      writer.write(LAST_RUN_FILE_ERROR_LINE + getRecursiveCauses(exception) + System.lineSeparator());
     }
+  }
+
+  private String getRecursiveCauses(Throwable e) {
+    return stream(ExceptionUtils.getThrowables(e))
+            .map(ex -> joinNullable(ex.getClass().getName(), ex.getMessage()))
+            .collect(Collectors.joining(" | "));
+  }
+
+  private String joinNullable(String s, String sNullable) {
+    return isBlank(sNullable) ? s : s + ": " + sNullable;
   }
 
   private boolean isNewDirectory(File directory) {
@@ -537,8 +573,8 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
       }
     }
 
-    String gatlingVersion = getVersion("io.gatling", "gatling-core");
-    Set<Artifact> gatlingCompilerAndDeps = resolve("io.gatling", "gatling-compiler", gatlingVersion, true).getArtifacts();
+    String gatlingVersion = getGatlingVersion();
+    Set<Artifact> gatlingCompilerAndDeps = resolveCompilerAndDeps(gatlingVersion).getArtifacts();
     for (Artifact artifact : gatlingCompilerAndDeps) {
       compilerClasspathElements.add(artifact.getFile().getCanonicalPath());
     }
@@ -546,6 +582,30 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     // Add plugin jar to classpath (used by MainWithArgsInFile)
     compilerClasspathElements.add(MojoUtils.locateJar(GatlingMojo.class));
     return compilerClasspathElements;
+  }
+
+  private String getGatlingVersion() {
+    for (Artifact artifact : mavenProject.getArtifacts()) {
+      if (artifact.getGroupId().equals("io.gatling") && artifact.getArtifactId().equals("gatling-core")) {
+        return artifact.getBaseVersion();
+      }
+    }
+    throw new UnsupportedOperationException("Couldn't locate io.gatling:gatling-core in classpath");
+  }
+
+  private ArtifactResolutionResult resolveCompilerAndDeps(String gatlingVersion) {
+    Artifact artifact = repository.createArtifact("io.gatling", "gatling-compiler", gatlingVersion, Artifact.SCOPE_RUNTIME, "jar");
+    ArtifactResolutionRequest request =
+      new ArtifactResolutionRequest()
+        .setArtifact(artifact)
+        .setResolveRoot(true)
+        .setResolveTransitively(true)
+        .setServers(session.getRequest().getServers())
+        .setMirrors(session.getRequest().getMirrors())
+        .setProxies(session.getRequest().getProxies())
+        .setLocalRepository(session.getLocalRepository())
+        .setRemoteRepositories(session.getCurrentProject().getRemoteArtifactRepositories());
+    return repository.resolve(request);
   }
 
   private List<String> gatlingJvmArgs() {

@@ -46,12 +46,12 @@ public class MainWithArgsInFile {
       throw new NoSuchMethodException("main");
     }
 
-    String[] argsArray = args.toArray(new String[args.size()]);
+    String[] argsArray = args.toArray(new String[0]);
     mainMethod.invoke(null, new Object[]{argsArray});
   }
 
   private static List<String> readArgFile(File argFile) throws IOException {
-    ArrayList<String> args = new ArrayList<String>();
+    ArrayList<String> args = new ArrayList<>();
     try (
       final FileReader fr = new FileReader(argFile);
       final BufferedReader in = new BufferedReader(fr)
