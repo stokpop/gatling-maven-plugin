@@ -12,6 +12,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * This file has been changed in the fork: events-gatling-maven-plugin
  */
 package io.gatling.mojo;
 
@@ -44,7 +46,8 @@ class Fork {
   private final Log log;
   private final File workingDirectory;
 
-  private SchedulerExceptionType schedulerExceptionType = SchedulerExceptionType.NONE;
+  // volatile because possibly multiple threads are involved
+  private volatile SchedulerExceptionType schedulerExceptionType = SchedulerExceptionType.NONE;
 
   private final ExecuteWatchdog gatlingProcessWatchDog =
       new ExecuteWatchdog(ExecuteWatchdog.INFINITE_TIMEOUT);
@@ -175,21 +178,27 @@ class Fork {
     }
 
     exec.setWatchdog(gatlingProcessWatchDog);
-    int exitValue = 0;
+
     try {
-      exitValue = exec.execute(cl);
+      int exitValue = exec.execute(cl);
+      if (exitValue != 0) {
+        throw new MojoFailureException("command line returned non-zero value:" + exitValue);
+      }
     } catch (Exception e) {
+      // these are set by the SchedulerExceptionHandler
       if (schedulerExceptionType == SchedulerExceptionType.KILL) {
         throw new KillSwitchException("KillSwitch killed the process! " + e.getMessage());
       }
       else if (schedulerExceptionType == SchedulerExceptionType.ABORT) {
         throw new AbortSchedulerException("AbortScheduler stopped the process! " + e.getMessage());
       }
+      if (log.isDebugEnabled()) {
+        log.debug("Exception from executor for: " + cl.toString(), e);
+      }
+      // can expect exceptions from killed gatling process here, e.g. via kill -TERM <pid> (code 143)
+      throw e;
     }
 
-    if (exitValue != 0) {
-      throw new MojoFailureException("command line returned non-zero value:" + exitValue);
-    }
   }
 
   private List<String> buildCommand() throws IOException {

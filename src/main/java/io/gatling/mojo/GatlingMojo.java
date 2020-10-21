@@ -354,7 +354,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
       // For KillSwitchException, go on with check results and assertions instead
       if (!(e instanceof KillSwitchException)) {
         if (failOnError) {
-          getLog().debug(">>> Fail on error");
+          getLog().debug(">>> Fail on error is enabled (true), setting abortEventScheduler to true.");
           abortEventScheduler = true;
           if (e instanceof GatlingSimulationAssertionsFailedException) {
             throw new MojoFailureException(e.getMessage(), e);
@@ -368,16 +368,19 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
         } else {
           getLog().warn("There were some errors while running your simulation, but failOnError was set to false won't fail your build.");
         }
-      ex = e instanceof GatlingSimulationAssertionsFailedException ? null : e;
+        ex = e instanceof GatlingSimulationAssertionsFailedException ? null : e;
+      }
+      else {
+        getLog().debug(">>> KillSwitchException found.");
       }
     } finally {
       recordSimulationResults(ex);
       if (eventScheduler != null && abortEventScheduler) {
-        getLog().debug(">>> Abort in finally");
+        getLog().debug(">>> Abort is called in finally: abortEventScheduler is true");
         eventScheduler.abortSession();
       }
       else {
-        getLog().debug(">>> No abort called because abortEventScheduler is false");
+        getLog().debug(">>> No abort called: abortEventScheduler is false");
       }
     }
 
