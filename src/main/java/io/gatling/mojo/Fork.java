@@ -195,7 +195,7 @@ class Fork {
       if (log.isDebugEnabled()) {
         log.debug("Exception from executor for: " + cl.toString(), e);
       }
-      // can expect exceptions from killed gatling process here, e.g. via kill -TERM <pid> (code 143)
+      // can expect exceptions from killed gatling process here, e.g. via kill -TERM <pid> (code 130 or 143)
       throw e;
     }
 

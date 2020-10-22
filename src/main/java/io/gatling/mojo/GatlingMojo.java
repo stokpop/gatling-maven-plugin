@@ -67,6 +67,7 @@ import static org.codehaus.plexus.util.StringUtils.isBlank;
   requiresDependencyResolution = ResolutionScope.TEST)
 public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
+  private final Object eventSchedulerLock = new Object();
   private EventScheduler eventScheduler;
 
   /**
@@ -375,16 +376,21 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
       }
     } finally {
       recordSimulationResults(ex);
-      if (eventScheduler != null && abortEventScheduler) {
-        getLog().debug(">>> Abort is called in finally: abortEventScheduler is true");
-        eventScheduler.abortSession();
-      }
-      else {
-        getLog().debug(">>> No abort called: abortEventScheduler is false");
+      if (eventScheduler != null) {
+        synchronized (eventSchedulerLock) {
+          if (abortEventScheduler && !eventScheduler.isSessionStopped()) {
+            getLog().debug(">>> Abort is called in finally: abortEventScheduler is true");
+            // implicit stop session
+            eventScheduler.abortSession();
+          } else {
+            getLog().debug(">>> No abort called: " +
+                "abort event scheduler is " + abortEventScheduler + ", stop is already called is " + eventScheduler.isSessionStopped());
+          }
+        }
       }
     }
 
-    if (eventScheduler != null && !eventScheduler.isSessionStopped()) {
+    if ( eventScheduler != null && !eventScheduler.isSessionStopped() ) {
       getLog().debug(">>> Stop session (because not isSessionStopped())");
       eventScheduler.stopSession();
       try {
@@ -412,17 +418,21 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   private void addShutdownHookForEventScheduler(EventScheduler eventScheduler) {
     final Thread main = Thread.currentThread();
     Runnable shutdowner = () -> {
+      synchronized (eventScheduler) {
         if (!eventScheduler.isSessionStopped()) {
           getLog().info("Shutdown Hook: abort event scheduler session!");
+          // implicit stop session
           eventScheduler.abortSession();
         }
+      }
 
-        // try to hold on to main thread to let the abort event tasks finish properly
-        try {
-            main.join(4000);
-        } catch (InterruptedException e) {
-            getLog().warn("Interrupt while waiting for abort to finish.");
-        }
+      // try to hold on to main thread to let the abort event tasks finish properly
+      try {
+        main.join(4000);
+      } catch (InterruptedException e) {
+        getLog().warn("Interrupt while waiting for abort to finish.");
+      }
+
     };
     Thread eventSchedulerShutdownThread = new Thread(shutdowner, "eventSchedulerShutdownThread");
     Runtime.getRuntime().addShutdownHook(eventSchedulerShutdownThread);
