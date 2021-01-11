@@ -19,7 +19,9 @@ package io.gatling.mojo;
 
 import nl.stokpop.eventscheduler.EventScheduler;
 import nl.stokpop.eventscheduler.EventSchedulerBuilder;
-import nl.stokpop.eventscheduler.api.*;
+import nl.stokpop.eventscheduler.api.EventLogger;
+import nl.stokpop.eventscheduler.api.SchedulerExceptionHandler;
+import nl.stokpop.eventscheduler.api.config.EventSchedulerConfig;
 import nl.stokpop.eventscheduler.exception.EventCheckFailureException;
 import nl.stokpop.eventscheduler.exception.handler.KillSwitchException;
 import org.apache.commons.exec.ExecuteException;
@@ -29,6 +31,7 @@ import org.apache.maven.artifact.resolver.ArtifactResolutionRequest;
 import org.apache.maven.artifact.resolver.ArtifactResolutionResult;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -49,7 +52,6 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -199,114 +201,10 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
   private Set<File> existingDirectories;
 
-  /**
-   * EventScheduler: enable or disable calls to EventScheduler, default is enabled
-   */
-  @Parameter(property = "gatling.eventSchedulerEnabled", defaultValue = "true")
-  private boolean eventSchedulerEnabled;
+  @Parameter
+  EventSchedulerConfig eventSchedulerConfig;
 
-  /**
-   * EventScheduler: list of custom event definitions
-   */
-  @Parameter(property = "gatling.events")
-  private Map<String, Properties> events;
-
-  /**
-   * EventScheduler: schedule script with events, one event per line, such as: PT1M|scale-down|replicas=2
-   */
-  @Parameter(property = "gatling.eventScheduleScript")
-  private String eventScheduleScript;
-
-  /**
-   * EventScheduler: name of system under test.
-   */
-  @Parameter(property = "gatling.eventSystemUnderTest", defaultValue = "UNKNOWN_SYSTEM_UNDER_TEST")
-  private String eventSystemUnderTest;
-
-  /**
-   * EventScheduler: work load for this test, for instance load or stress
-   */
-  @Parameter(property = "gatling.eventWorkload", defaultValue = "UNKNOWN_WORKLOAD")
-  private String eventWorkload;
-
-  /**
-   * EventScheduler: environment for this test.
-   */
-  @Parameter(property = "gatling.eventTestEnvironment", defaultValue = "UNKNOWN_TEST_ENVIRONMENT")
-  private String eventTestEnvironment;
-
-  /**
-   * EventScheduler: name of product that is being tested.
-   */
-  @Parameter(property = "gatling.eventProductName",  defaultValue = "ANONYMOUS_PRODUCT")
-  private String eventProductName;
-
-  /**
-   * EventScheduler: name of performance dashboard for this test.
-   */
-  @Parameter(property = "gatling.eventDashboardName", defaultValue = "ANONYMOUS_DASHBOARD")
-  private String eventDashboardName;
-
-  /**
-   * EventScheduler: test run id.
-   */
-  @Parameter(property = "gatling.eventTestRunId",  defaultValue = "ANONYMOUS_TEST_ID")
-  private String eventTestRunId;
-
-  /**
-   * EventScheduler: build results url is where the build results of this load test can be found.
-   */
-  @Parameter(property = "gatling.eventBuildResultsUrl")
-  private String eventBuildResultsUrl;
-
-  /**
-   * EventScheduler: the version number of the system under test.
-   */
-  @Parameter(property = "gatling.eventVersion",  defaultValue = "1.0.0-SNAPSHOT")
-  private String eventVersion;
-
-  /**
-   * EventScheduler: test rampup time in seconds.
-   */
-  @Parameter(property = "gatling.eventRampupTimeInSeconds",  defaultValue = "30")
-  private String eventRampupTimeInSeconds;
-
-  /**
-   * EventScheduler: test constant load time in seconds.
-   */
-  @Parameter(property = "gatling.eventConstantLoadTimeInSeconds", defaultValue = "570")
-  private String eventConstantLoadTimeInSeconds;
-
-  /**
-   * EventScheduler: test run annotations passed via environment variable
-   */
-  @Parameter(property = "gatling.eventAnnotations", alias = "ann")
-  private String eventAnnotations;
-
-  /**
-   * EventScheduler: test run variables passed via environment variable
-   */
-  @Parameter(property = "gatling.eventVariables")
-  private Properties eventVariables;
-
-  /**
-   * EventScheduler: test run comma separated tags via environment variable
-   */
-  @Parameter(property = "gatling.eventTags")
-  private List<String> eventTags;
-
-  /**
-   * EventScheduler: enable debug logging for events. Note: maven -X debug should
-   * also be active.
-   */
-  @Parameter(property = "gatling.eventDebugEnabled")
-  private boolean eventDebugEnabled;
-
-  /**
-   * EventScheduler: how often is keep alive event fired. Default is 30 seconds.
-   */
-  @Parameter(property = "gatling.eventKeepAliveIntervalInSeconds", defaultValue = "30")
-  private Integer eventKeepAliveIntervalInSeconds;
+  boolean isEventSchedulerEnabled = false;
 
   /**
    * Executes Gatling simulations.
@@ -320,8 +218,9 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
 
     boolean abortEventScheduler = false;
 
-    eventScheduler = eventSchedulerEnabled
-            ? createEventScheduler()
+    isEventSchedulerEnabled = eventSchedulerConfig != null && eventSchedulerConfig.isSchedulerEnabled();
+    eventScheduler = isEventSchedulerEnabled
+            ? createEventScheduler(eventSchedulerConfig, getLog())
             : null;
 
     // Create results directories
@@ -489,7 +388,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   private void executeGatling(List<String> gatlingJvmArgs, List<String> gatlingArgs, List<String> testClasspath, Toolchain toolchain) throws Exception {
     Fork forkedGatling = new Fork(GATLING_MAIN_CLASS, testClasspath, gatlingJvmArgs, gatlingArgs, toolchain, propagateSystemProperties, getLog(), workingDirectory);
 
-    if (eventSchedulerEnabled) {
+    if (isEventSchedulerEnabled) {
       SchedulerExceptionHandler exceptionHandler = forkedGatling.getSchedulerExceptionHandler();
       startScheduler(eventScheduler, exceptionHandler);
     }
@@ -781,74 +680,43 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
     return !clazz.isInterface() && !Modifier.isAbstract(clazz.getModifiers());
   }
 
-  private EventScheduler createEventScheduler() {
+  private static EventScheduler createEventScheduler(EventSchedulerConfig eventSchedulerConfig, Log log) {
 
     EventLogger logger = new EventLogger() {
       @Override
       public void info(String message) {
-        getLog().info(message);
+        log.info(message);
       }
 
       @Override
       public void warn(String message) {
-        getLog().warn(message);
+        log.warn(message);
       }
 
       @Override
       public void error(String message) {
-        getLog().error(message);
+        log.error(message);
       }
 
       @Override
       public void error(String message, Throwable throwable) {
-        getLog().error(message, throwable);
+        log.error(message, throwable);
       }
 
       @Override
       public void debug(final String message) {
-        if (isDebugEnabled()) getLog().debug(message);
+        if (isDebugEnabled()) log.debug(message);
       }
 
       @Override
       public boolean isDebugEnabled() {
-          return eventDebugEnabled;
+        return eventSchedulerConfig.isDebugEnabled();
       }
 
     };
 
-    // there might be null values for empty <tag></tag>
-    List<String> filteredEventTags = eventTags.stream().filter(Objects::nonNull).collect(Collectors.toList());
+    return EventSchedulerBuilder.of(eventSchedulerConfig, logger);
 
-    TestContext testContext = new TestContextBuilder()
-            .setTestRunId(eventTestRunId)
-            .setSystemUnderTest(eventSystemUnderTest)
-            .setVersion(eventVersion)
-            .setWorkload(eventWorkload)
-            .setTestEnvironment(eventTestEnvironment)
-            .setCIBuildResultsUrl(eventBuildResultsUrl)
-            .setRampupTimeInSeconds(eventRampupTimeInSeconds)
-            .setConstantLoadTimeInSeconds(eventConstantLoadTimeInSeconds)
-            .setAnnotations(eventAnnotations)
-            .setTags(filteredEventTags)
-            .setVariables(eventVariables)
-            .build();
-
-    EventSchedulerSettings settings = new EventSchedulerSettingsBuilder()
-            .setKeepAliveInterval(Duration.ofSeconds(eventKeepAliveIntervalInSeconds))
-            .build();
-
-    EventSchedulerBuilder eventSchedulerBuilder = new EventSchedulerBuilder()
-            .setEventSchedulerSettings(settings)
-            .setTestContext(testContext)
-            .setAssertResultsEnabled(eventSchedulerEnabled)
-            .setCustomEvents(eventScheduleScript)
-            .setLogger(logger);
-
-    if (events != null) {
-      events.forEach(eventSchedulerBuilder::addEvent);
-    }
-
-    return eventSchedulerBuilder.build();
   }
 
 }
