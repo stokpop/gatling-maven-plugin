@@ -9,17 +9,13 @@
 
     <groupId>nl.stokpop</groupId>
     <artifactId>events-gatling-maven-plugin</artifactId>
-    <version>3.1.0-events-2.0-SNAPSHOT</version>
+    <version>3.1.0-events-2.0</version>
     <name>events-gatling-maven-plugin</name>
-    <description>Forked from gatling-maven-plugin 3.1.0, this version has test-scheduler integration.</description>
+    <description>Forked from gatling-maven-plugin 3.1.0, this version has event-scheduler integration.</description>
     <packaging>maven-plugin</packaging>
 
 	<inceptionYear>2011</inceptionYear>
 	<url>http://gatling.io</url>
-
-	<!--    events-gatling-maven-plugin: -->
-	<!--    <inceptionYear>2019</inceptionYear> -->
-	<!--    <url>http://www.stokpop.nl</url> -->
 
 	<developers>
 		<developer>
@@ -27,11 +23,6 @@
 			<name>Stephane Landelle</name>
 			<organization>Gatling Corp</organization>
         </developer>
-        <developer>
-            <id>peter.paul.bakker@stokpop.nl</id>
-            <name>Peter Paul Bakker</name>
-            <organization>Stokpop Software Solutions</organization>
-		</developer>
 	</developers>
 
 	<scm>
@@ -62,7 +53,7 @@
 		<maven-plugin-plugin.version>3.6.0</maven-plugin-plugin.version>
 		<maven-surefire-plugin.version>2.22.1</maven-surefire-plugin.version>
 		<junit.version>5.4.0</junit.version>
-		<event-scheduler.version>3.0.0-M1-SNAPSHOT</event-scheduler.version>
+		<event-scheduler.version>3.0.0</event-scheduler.version>
 	</properties>
 
 	<dependencyManagement>
