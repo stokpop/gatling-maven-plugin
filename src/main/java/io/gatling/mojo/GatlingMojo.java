@@ -204,7 +204,7 @@ public class GatlingMojo extends AbstractGatlingExecutionMojo {
   @Parameter
   EventSchedulerConfig eventSchedulerConfig;
 
-  boolean isEventSchedulerEnabled = false;
+  private boolean isEventSchedulerEnabled = false;
 
   /**
    * Executes Gatling simulations.
